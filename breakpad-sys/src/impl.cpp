@@ -18,13 +18,13 @@ struct BreakpadContext {
     void* callback_ctx;
 };
 
-struct ExceptionHandler {
+struct ExcHandler {
     BreakpadContext* bp_ctx;
     google_breakpad::ExceptionHandler* handler;
 };
 
 extern "C" {
-    ExceptionHandler* attach_exception_handler(
+    ExcHandler* attach_exception_handler(
         const CHAR_TYPE* path,
         size_t path_len,
         dump_callback callback,
@@ -136,14 +136,14 @@ extern "C" {
             #error "Unknown target platform"
         #endif
 
-        auto* exc_handler = new ExceptionHandler;
+        auto* exc_handler = new ExcHandler;
         exc_handler->bp_ctx = bp_ctx;
         exc_handler->handler = handler;
 
         return exc_handler;
     }
 
-    void detach_exception_handler(ExceptionHandler* handler) {
+    void detach_exception_handler(ExcHandler* handler) {
         delete handler->bp_ctx;
         delete handler->handler;
         delete handler;
