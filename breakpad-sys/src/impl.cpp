@@ -35,7 +35,7 @@ extern "C" {
         bp_ctx->callback_ctx = callback_ctx;
 
         #ifdef TARGET_OS_WINDOWS
-            std::wstring dump_path(reinterpret_cast<const wchar_t*>(path), path_len / (sizeof(wchar_t) / sizeof(uint8_t)));
+            std::wstring dump_path(reinterpret_cast<const wchar_t*>(path), path_len);
 
             auto crash_callback = [](
                 const wchar_t* breakpad_dump_path,
@@ -55,7 +55,7 @@ extern "C" {
 
                 ctx->callback(
                     reinterpret_cast<const CHAR_TYPE*>(dump_path.data()),
-                    dump_path.size() * (sizeof(wchar_t) / sizeof(uint8_t)),
+                    dump_path.size(),
                     ctx->callback_ctx
                 );
 
