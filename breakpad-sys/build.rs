@@ -150,7 +150,7 @@ fn main() {
                     "dynamic_images.cc",
                     "exception_handler.cc",
                     "minidump_generator.cc",
-                    "protected_memory_all.cc",
+                    "protected_memory_allocator.cc",
                 ],
             );
         }
