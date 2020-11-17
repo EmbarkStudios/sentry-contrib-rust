@@ -138,6 +138,12 @@ fn main() {
 
             add_sources(
                 &mut build,
+                "breakpad/src/common/mac",
+                &["file_id.cc", "macho_id.cc", "MachIPC.mm"],
+            );
+
+            add_sources(
+                &mut build,
                 "breakpad/src/client/mac/crash_generation",
                 &["crash_generation_client.cc"],
             );
