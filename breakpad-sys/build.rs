@@ -39,7 +39,7 @@ fn main() {
     add_sources(
         &mut build,
         "breakpad/src/common",
-        &["convert_UTF.cc", "string_conversion.cc"],
+        &["convert_UTF", "string_conversion"],
     );
 
     match std::env::var("CARGO_CFG_TARGET_OS")
@@ -49,59 +49,51 @@ fn main() {
         "linux" | "android" => {
             build.define("TARGET_OS_LINUX", None).include("lss");
 
-            add_sources(
-                &mut build,
-                "breakpad/src/client",
-                &["minidump_file_writer.cc"],
-            );
+            add_sources(&mut build, "breakpad/src/client", &["minidump_file_writer"]);
 
             add_sources(
                 &mut build,
                 "breakpad/src/common/linux",
                 &[
-                    "elfutils.cc",
-                    "file_id.cc",
-                    "guid_creator.cc",
-                    "linux_libc_support.cc",
-                    "memory_mapped_file.cc",
-                    "safe_readlink.cc",
+                    "elfutils",
+                    "file_id",
+                    "guid_creator",
+                    "linux_libc_support",
+                    "memory_mapped_file",
+                    "safe_readlink",
                 ],
             );
 
-            add_sources(&mut build, "breakpad/src/client/linux/log", &["log.cc"]);
+            add_sources(&mut build, "breakpad/src/client/linux/log", &["log"]);
 
             add_sources(
                 &mut build,
                 "breakpad/src/client/linux/handler",
-                &["exception_handler.cc", "minidump_descriptor.cc"],
+                &["exception_handler", "minidump_descriptor"],
             );
 
             add_sources(
                 &mut build,
                 "breakpad/src/client/linux/crash_generation",
-                &["crash_generation_client.cc"],
+                &["crash_generation_client"],
             );
 
             add_sources(
                 &mut build,
                 "breakpad/src/client/linux/microdump_writer",
-                &["microdump_writer.cc"],
+                &["microdump_writer"],
             );
 
             add_sources(
                 &mut build,
                 "breakpad/src/client/linux/minidump_writer",
-                &[
-                    "linux_dumper.cc",
-                    "linux_ptrace_dumper.cc",
-                    "minidump_writer.cc",
-                ],
+                &["linux_dumper", "linux_ptrace_dumper", "minidump_writer"],
             );
 
             add_sources(
                 &mut build,
                 "breakpad/src/client/linux/dump_writer_common",
-                &["thread_info.cc", "ucontext_reader.cc"],
+                &["thread_info", "ucontext_reader"],
             );
         }
         "windows" => {
@@ -109,56 +101,60 @@ fn main() {
                 .define("TARGET_OS_WINDOWS", None)
                 .define("UNICODE", None);
 
-            add_sources(
-                &mut build,
-                "breakpad/src/common/windows",
-                &["guid_string.cc"],
-            );
+            add_sources(&mut build, "breakpad/src/common/windows", &["guid_string"]);
 
             add_sources(
                 &mut build,
                 "breakpad/src/client/windows/crash_generation",
-                &["crash_generation_client.cc"],
+                &["crash_generation_client"],
             );
 
             add_sources(
                 &mut build,
                 "breakpad/src/client/windows/handler",
-                &["exception_handler.cc"],
+                &["exception_handler"],
             );
         }
         "macos" => {
             build.define("TARGET_OS_MAC", None);
 
-            add_sources(
-                &mut build,
-                "breakpad/src/client",
-                &["minidump_file_writer.cc"],
-            );
+            add_sources(&mut build, "breakpad/src/client", &["minidump_file_writer"]);
+
+            add_sources(&mut build, "breakpad/src/common", &["md5"]);
 
             add_sources(
                 &mut build,
                 "breakpad/src/common/mac",
-                &["file_id.cc", "macho_id.cc", "MachIPC.mm"],
+                &[
+                    "file_id",
+                    "macho_id",
+                    "macho_utilities",
+                    "macho_walker",
+                    "string_utilities",
+                ],
             );
+
+            build.file("breakpad/src/common/mac/MachIPC.mm");
 
             add_sources(
                 &mut build,
                 "breakpad/src/client/mac/crash_generation",
-                &["crash_generation_client.cc"],
+                &["crash_generation_client"],
             );
 
             add_sources(
                 &mut build,
                 "breakpad/src/client/mac/handler",
                 &[
-                    "breakpad_nlist_64.cc",
-                    "dynamic_images.cc",
-                    "exception_handler.cc",
-                    "minidump_generator.cc",
-                    "protected_memory_allocator.cc",
+                    "breakpad_nlist_64",
+                    "dynamic_images",
+                    "exception_handler",
+                    "minidump_generator",
+                    "protected_memory_allocator",
                 ],
             );
+
+            println!("cargo:rustc-link-lib=framework=Foundation");
         }
         unsupported => unimplemented!("{} is not a supported target", unsupported),
     }
