@@ -80,7 +80,7 @@ extern "C" {
             ) -> bool {
                 auto* ctx = (BreakpadContext*)context;
 
-                google_breakpad::string dump_path(dump_dir);
+                std::string dump_path(dump_dir);
                 dump_path.push_back('/');
                 dump_path.append(minidump_id);
                 dump_path.append(".dmp");
@@ -100,7 +100,7 @@ extern "C" {
                 crash_callback, // Callback invoked after the minidump has been written
                 bp_ctx, // Callback context
                 true, // Actually write minidumps when unhandled signals occur
-                nullptr, // Don't start a separate process, handle crashes in the same process
+                nullptr // Don't start a separate process, handle crashes in the same process
             );
         #elif defined(TARGET_OS_LINUX)
             std::string dump_path(reinterpret_cast<const char*>(path), path_len);
