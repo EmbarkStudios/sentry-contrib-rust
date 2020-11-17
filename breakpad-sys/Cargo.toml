@@ -1,8 +1,33 @@
 [package]
 name = "breakpad-sys"
+description = "Wrapper around breakpad's crash detection and minidump writing facilities"
+repository = "https://github.com/EmbarkStudios/tame-sentry"
 version = "0.1.0"
-authors = ["Jake Shadle <jake.shadle@embark-studios.com>"]
+authors = ["Embark <opensource@embark-studios.com>"]
 edition = "2018"
+# This is the license for a majority of the C++ code, though there are a ton of
+# "other" licenses floating around, but it's clear that BSD-3-Clause covers a
+# majority of the code that is actually compiled and used
+# https://clearlydefined.io/definitions/git/github/google/breakpad/5bba75bfd6ec386b8e3af0b91332388a378135bf
+license = "BSD-3-Clause"
+documentation = "https://docs.rs/breakpad-sys"
+homepage = "https://github.com/EmbarkStudios/tame-sentry"
+keywords = ["breakpad"]
+exclude = [
+    "breakpad/.github",
+    "breakpad/android",
+    "breakpad/autotools",
+    "breakpad/docs",
+    "breakpad/m4",
+    "breakpad/scripts",
+    "breakpad/src/build",
+    "breakpad/src/client/solaris",
+    "breakpad/src/common/solaris",
+    "breakpad/src/common/testdata",
+    "breakpad/src/common/tests",
+    "breakpad/src/processor",
+    "breakpad/src/tools",
+]
 
 [build-dependencies]
 cc = { version = "1.0", features = ["parallel"] }
