@@ -1,5 +1,9 @@
 mod breakpad_integration;
-mod disk_transport;
 
 pub use breakpad_integration::BreakpadIntegration;
-pub use disk_transport::DiskTransport;
+
+pub fn upload_minidumps(hub: &sentry_core::Hub) {
+    hub.with_integration(|integration: &BreakpadIntegration| {
+        integration.upload_minidumps(hub);
+    });
+}

@@ -24,6 +24,7 @@ pub struct BreakpadHandler {
 }
 
 unsafe impl Send for BreakpadHandler {}
+unsafe impl Sync for BreakpadHandler {}
 
 impl BreakpadHandler {
     /// Sets up a breakpad handler to catch exceptions/signals, writing out
