@@ -23,6 +23,8 @@ pub struct BreakpadHandler {
     on_crash: *mut std::ffi::c_void,
 }
 
+unsafe impl Send for BreakpadHandler {}
+
 impl BreakpadHandler {
     /// Sets up a breakpad handler to catch exceptions/signals, writing out
     /// a minidump to the designated directory if a crash occurs. Only one

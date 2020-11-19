@@ -1,5 +1,5 @@
 [package]
-name = "tame-sentry"
+name = "sentry-contrib-breakpad"
 description = "Unopinionated crash collection for Sentry reporting purposes"
 repository = "https://github.com/EmbarkStudios/tame-sentry"
 version = "0.1.0"
@@ -19,9 +19,15 @@ exclude = [
 
 [dependencies]
 breakpad-handler = { version = "0.1.0", path = "./breakpad-handler" }
+crossbeam = "0.8.0"
+parking_lot = "0.11"
+sentry-core = "0.21"
 
 [workspace]
 members = [
     "breakpad-handler",
     "breakpad-sys",
 ]
+
+[patch.crates-io]
+sentry-types = { path = "../sentry-rust/sentry-types" }
