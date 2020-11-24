@@ -54,7 +54,6 @@ fn read_metadata_to_envelope(path: &std::path::Path, envelope: &mut protocol::En
 pub struct BreakpadIntegration {
     crash_handler: Option<breakpad_handler::BreakpadHandler>,
     crash_dir: std::path::PathBuf,
-    hub: std::sync::Arc<sentry_core::Hub>,
 }
 
 impl BreakpadIntegration {
@@ -70,7 +69,7 @@ impl BreakpadIntegration {
         // anyway, but then again, it's C++ code, so I have low trust
         std::fs::create_dir_all(&crash_dir)?;
 
-        let crash_hub = hub.clone();
+        let crash_hub = std::sync::Arc::downgrade(&hub);
         let crash_handler = breakpad_handler::BreakpadHandler::attach(
             &crash_dir,
             Box::new(move |mut minidump_path: std::path::PathBuf| {
@@ -92,7 +91,8 @@ impl BreakpadIntegration {
                 // Now fill out the event and (maybe) get the session status so
                 // that we can serialize them to disk so that we can add them
                 // into the same envelope as the actual minidump
-                {
+                if let Some(crash_hub) = crash_hub.upgrade() {
+                    crash_hub.end_session_with_status(protocol::SessionStatus::Crashed);
                     if let Some(client) = crash_hub.client() {
                         eprintln!("FILLING EVENT!");
                         crash_hub.configure_scope(|scope| {
@@ -139,6 +139,12 @@ impl BreakpadIntegration {
                     meta_data.len(),
                     minidump_path.display()
                 );
+
+                if let Some(crash_hub) = crash_hub.upgrade() {
+                    if let Some(client) = crash_hub.client() {
+                        client.close(None);
+                    }
+                }
             }),
         )?;
 
@@ -147,13 +153,12 @@ impl BreakpadIntegration {
         Ok(Self {
             crash_dir,
             crash_handler: Some(crash_handler),
-            hub,
         })
     }
 
     /// Run this once you have initialized Sentry to upload any minidumps + metadata
     /// that may exist from an earlier run
-    pub fn upload_minidumps(&self) {
+    pub fn upload_minidumps(&self, hub: &sentry_core::Hub) {
         // Scan the directory the integration was initialized with to find any
         // envelopes that have been serialized to disk and send + delete them
         let rd = match std::fs::read_dir(&self.crash_dir) {
@@ -168,9 +173,7 @@ impl BreakpadIntegration {
             }
         };
 
-        let client = self.hub.client();
-
-        let client = match client {
+        let client = match hub.client() {
             Some(c) => c,
             None => return,
         };
