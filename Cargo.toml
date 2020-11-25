@@ -17,6 +17,10 @@ exclude = [
     "breakpad-sys",
 ]
 
+[features]
+default = []
+debug-logging = []
+
 [dependencies]
 breakpad-handler = { version = "0.1.0", path = "./breakpad-handler" }
 crossbeam = "0.8.0"

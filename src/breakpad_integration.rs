@@ -1,5 +1,17 @@
 use sentry_core::protocol;
 
+macro_rules! debug_print {
+    ($($arg:tt)*) => {
+        #[cfg(feature = "debug-logs")]
+        {
+            eprintln!("[bp] {}", format_args!($($arg)*));
+        }
+        #[cfg(not(feature = "debug-logs"))]
+        {
+        }
+    }
+}
+
 fn read_metadata_to_envelope(path: &std::path::Path, envelope: &mut protocol::Envelope) {
     if !path.exists() {
         return;
@@ -8,11 +20,11 @@ fn read_metadata_to_envelope(path: &std::path::Path, envelope: &mut protocol::En
     let contents = match std::fs::read_to_string(path) {
         Ok(contents) => {
             // Immediately remove the file so we don't try to do this again
-            //let _ = std::fs::remove_file(path);
+            let _ = std::fs::remove_file(path);
             contents
         }
         Err(e) => {
-            eprintln!(
+            debug_print!(
                 "unable to read crash metadata from '{}': {}",
                 path.display(),
                 e
@@ -30,7 +42,7 @@ fn read_metadata_to_envelope(path: &std::path::Path, envelope: &mut protocol::En
                     envelope.add_item(protocol::EnvelopeItem::Event(event));
                 }
                 Err(e) => {
-                    eprintln!("unable to deserialize Event: {}", e);
+                    debug_print!("unable to deserialize Event: {}", e);
                 }
             };
         }
@@ -43,7 +55,7 @@ fn read_metadata_to_envelope(path: &std::path::Path, envelope: &mut protocol::En
                     envelope.add_item(protocol::EnvelopeItem::SessionUpdate(sess));
                 }
                 Err(e) => {
-                    eprintln!("unable to deserialize SessionUpdate: {}", e);
+                    debug_print!("unable to deserialize SessionUpdate: {}", e);
                 }
             };
         }
@@ -94,7 +106,6 @@ impl BreakpadIntegration {
                 if let Some(crash_hub) = crash_hub.upgrade() {
                     crash_hub.end_session_with_status(protocol::SessionStatus::Crashed);
                     if let Some(client) = crash_hub.client() {
-                        eprintln!("FILLING EVENT!");
                         crash_hub.configure_scope(|scope| {
                             let assembled = client.assemble_event(event, Some(scope));
                             eve = assembled.0;
@@ -108,7 +119,7 @@ impl BreakpadIntegration {
                 // Serialize the envelope then the session update to their own JSON line
                 if let Some(eve) = eve {
                     if let Err(e) = serde_json::to_writer(&mut meta_data, &eve) {
-                        eprintln!("failed to serialize event to crash metadata: {}", e);
+                        debug_print!("failed to serialize event to crash metadata: {}", e);
                     }
                 }
 
@@ -116,7 +127,7 @@ impl BreakpadIntegration {
 
                 if let Some(su) = sess_update {
                     if let Err(e) = serde_json::to_writer(&mut meta_data, &su) {
-                        eprintln!(
+                        debug_print!(
                             "failed to serialize session update to crash metadata: {}",
                             e
                         );
@@ -127,14 +138,14 @@ impl BreakpadIntegration {
                 minidump_path.set_extension("metadata");
 
                 if let Err(e) = std::fs::write(&minidump_path, &meta_data) {
-                    eprintln!(
+                    debug_print!(
                         "failed to write sentry crash metadata to '{}': {}",
                         minidump_path.display(),
                         e
                     );
                 }
 
-                eprintln!(
+                debug_print!(
                     "wrote {} of metadata for crash to {}",
                     meta_data.len(),
                     minidump_path.display()
@@ -164,7 +175,7 @@ impl BreakpadIntegration {
         let rd = match std::fs::read_dir(&self.crash_dir) {
             Ok(rd) => rd,
             Err(e) => {
-                eprintln!(
+                debug_print!(
                     "Unable to read crash directory '{}': {}",
                     self.crash_dir.display(),
                     e
@@ -194,7 +205,7 @@ impl BreakpadIntegration {
 
             let minidump_contents = match std::fs::read(&minidump_path) {
                 Err(e) => {
-                    eprintln!(
+                    debug_print!(
                         "unable to read minidump from '{}': {}",
                         minidump_path.display(),
                         e
@@ -212,7 +223,6 @@ impl BreakpadIntegration {
                 Ok(minidump) => {
                     // Remove the minidump so we don't process it again
                     let _ = std::fs::remove_file(&minidump_path);
-                    eprintln!("LOADED MINIDUMP FROM {}", minidump_path.display());
                     minidump
                 }
             };
@@ -239,7 +249,7 @@ impl BreakpadIntegration {
                                 .to_str()
                                 .and_then(|fs| fs.parse::<sentry_core::types::Uuid>().ok())
                         })
-                        .unwrap_or_else(|| sentry_core::types::Uuid::new_v4()),
+                        .unwrap_or_else(sentry_core::types::Uuid::new_v4),
                     level: protocol::Level::Fatal,
                     timestamp: sentry_core::types::Utc::now(),
                     ..Default::default()
