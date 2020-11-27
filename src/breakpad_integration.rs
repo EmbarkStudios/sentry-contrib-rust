@@ -261,6 +261,10 @@ impl BreakpadIntegration {
             client.send_envelope(envelope);
         }
     }
+
+    pub fn inner_handler(&self) -> &Option<breakpad_handler::BreakpadHandler> {
+        &self.crash_handler
+    }
 }
 
 impl Drop for BreakpadIntegration {

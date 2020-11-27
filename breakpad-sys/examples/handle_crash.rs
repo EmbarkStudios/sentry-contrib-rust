@@ -52,6 +52,8 @@ fn main() {
             path.len(),
             callback,
             std::ptr::null_mut(),
+            None,
+            std::ptr::null_mut(),
         );
 
         if std::env::args().any(|a| a == "--crash") {

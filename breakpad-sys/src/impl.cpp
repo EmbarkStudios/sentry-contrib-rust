@@ -12,10 +12,13 @@
 // Callback invoked when a minidump occurs. Returns the path + length of the
 // minidump file, along with the callback context.
 typedef void (*dump_callback)(const CHAR_TYPE*, size_t, void*);
+typedef bool (*pause_callback)(void*);
 
 struct BreakpadContext {
     dump_callback callback;
     void* callback_ctx;
+    pause_callback pause;
+    void* pause_ctx;
 };
 
 struct ExcHandler {
@@ -27,12 +30,16 @@ extern "C" {
     ExcHandler* attach_exception_handler(
         const CHAR_TYPE* path,
         size_t path_len,
-        dump_callback callback,
-        void* callback_ctx
+        dump_callback crash_cb,
+        void* callback_ctx,
+        pause_callback pause_cb,
+        void* pause_ctx
     ) {
         auto* bp_ctx = new BreakpadContext;
-        bp_ctx->callback = callback;
+        bp_ctx->callback = crash_cb;
         bp_ctx->callback_ctx = callback_ctx;
+        bp_ctx->pause = pause_cb;
+        bp_ctx->pause_ctx = pause_ctx;
 
         #ifdef TARGET_OS_WINDOWS
             std::wstring dump_path(reinterpret_cast<const wchar_t*>(path), path_len);
@@ -94,10 +101,24 @@ extern "C" {
                 return succeeded;
             };
 
+            auto pause_callback = [](void* context) -> bool {
+                auto* ctx = (BreakpadContext*)context;
+
+                if (ctx->pause) {
+                    return ctx->pause(ctx->pause_ctx);
+                } else {
+                    return false;
+                }
+            };
+
             auto* handler = new google_breakpad::ExceptionHandler(
                 dump_path, // Directory to store the minidump in
                 nullptr, // Minidump write filter, might be used later
                 crash_callback, // Callback invoked after the minidump has been written
+                // Callback invoked during exception handling to see if the exception
+                // handler should not actually write a minidump and continue as if
+                // breakpad was not installed
+                pause_callback,
                 bp_ctx, // Callback context
                 true, // Actually write minidumps when unhandled signals occur
                 nullptr // Don't start a separate process, handle crashes in the same process

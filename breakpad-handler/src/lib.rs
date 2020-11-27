@@ -21,6 +21,8 @@ static HANDLER_ATTACHED: atomic::AtomicBool = atomic::AtomicBool::new(false);
 pub struct BreakpadHandler {
     handler: *mut breakpad_sys::ExceptionHandler,
     on_crash: *mut std::ffi::c_void,
+    #[cfg(target_os = "macos")]
+    pause_ctx: Box<atomic::AtomicBool>,
 }
 
 unsafe impl Send for BreakpadHandler {}
@@ -40,7 +42,7 @@ impl BreakpadHandler {
 
         let on_crash = Box::into_raw(Box::new(on_crash)) as *mut _;
 
-        let handler = unsafe {
+        unsafe {
             let os_str = crash_dir.as_ref().as_os_str();
 
             let path: Vec<breakpad_sys::PathChar> = {
@@ -56,7 +58,7 @@ impl BreakpadHandler {
                 }
             };
 
-            extern "C" fn callback(
+            extern "C" fn crash_callback(
                 path: *const breakpad_sys::PathChar,
                 path_len: usize,
                 ctx: *mut std::ffi::c_void,
@@ -81,10 +83,61 @@ impl BreakpadHandler {
                 Box::leak(context);
             }
 
-            breakpad_sys::attach_exception_handler(path.as_ptr(), path.len(), callback, on_crash)
-        };
+            #[cfg(target_os = "macos")]
+            {
+                let pause_ctx = Box::new(atomic::AtomicBool::new(false));
 
-        Ok(Self { handler, on_crash })
+                extern "C" fn pause_callback(ctx: *mut std::ffi::c_void) -> bool {
+                    let is_paused = unsafe { &*(ctx as *const atomic::AtomicBool) };
+
+                    is_paused.load(atomic::Ordering::Relaxed)
+                }
+
+                let handler = breakpad_sys::attach_exception_handler(
+                    path.as_ptr(),
+                    path.len(),
+                    crash_callback,
+                    on_crash,
+                    Some(pause_callback),
+                    &*pause_ctx as *const atomic::AtomicBool as *mut _,
+                );
+
+                Ok(Self {
+                    handler,
+                    on_crash,
+                    pause_ctx,
+                })
+            }
+
+            #[cfg(not(target_os = "macos"))]
+            {
+                let handler = breakpad_sys::attach_exception_handler(
+                    path.as_ptr(),
+                    path.len(),
+                    crash_callback,
+                    on_crash,
+                    None,
+                    std::ptr::null_mut(),
+                );
+
+                Ok(Self { handler, on_crash })
+            }
+        }
+    }
+
+    /// Pauses Breakpad's exception handler, temporarily pretending as if Breakpad
+    /// is not attached. This is exposed only when targetting on mac's, as this is
+    /// (usually) only needed when an application intentionally wants to handle
+    /// regular signals, but can't since breakpad's exception handler always
+    /// takes precedence.
+    #[cfg(target_os = "macos")]
+    pub fn pause(&self) {
+        self.pause_ctx.store(true, atomic::Ordering::Relaxed);
+    }
+
+    #[cfg(target_os = "macos")]
+    pub fn unpause(&self) {
+        self.pause_ctx.store(false, atomic::Ordering::Relaxed);
     }
 }
 
