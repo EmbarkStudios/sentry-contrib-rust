@@ -1,6 +1,6 @@
 [submodule "breakpad-sys/breakpad"]
 	path = breakpad-sys/breakpad
-	url = https://github.com/getsentry/breakpad.git
+	url = https://github.com/EmbarkStudios/breakpad.git
 [submodule "breakpad-sys/lss/third_party/lss"]
 	path = breakpad-sys/lss/third_party/lss
 	url = https://chromium.googlesource.com/linux-syscall-support.git
