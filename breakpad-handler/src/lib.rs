@@ -18,11 +18,34 @@ where
 
 static HANDLER_ATTACHED: atomic::AtomicBool = atomic::AtomicBool::new(false);
 
+/// Determines which handlers are installed to catch errors. These options are
+/// only used when targetting MacOS/iOS, all other platforms use the only
+/// error handler they support
+pub enum InstallOptions {
+    /// No handlers are registered. This means you won't actually catch any
+    /// errors at all.
+    NoHandlers,
+    /// Registers the exception handler. On Mac, this means that traditional
+    /// Unix signals will **NOT** be sent, which can interfere with normal
+    /// operations of your program if it is indeed trying to hook into signal
+    /// handlers, eg wasmtime.
+    ExceptionHandler,
+    /// Registers the signal handler. If the exception handler is not installed
+    /// this means that exceptions will be turned into normal Unix signals
+    /// instead, which allows other signal handlers to interoperate with the
+    /// Breakpad signal handler by just installing themselves **AFTER**
+    /// the Breakpad signal handler is installed and restoring it when they are
+    /// finished with their signal handling, allowing Breakpad to continue to
+    /// catch crash signals when other application signal handlers are not active
+    SignalHandler,
+    /// Installs both the ExceptionHandler and SignalHandler, but this has all
+    /// of the caveats of the ExceptionHandler.
+    BothHandlers,
+}
+
 pub struct BreakpadHandler {
     handler: *mut breakpad_sys::ExceptionHandler,
     on_crash: *mut std::ffi::c_void,
-    #[cfg(target_os = "macos")]
-    pause_ctx: Box<atomic::AtomicBool>,
 }
 
 unsafe impl Send for BreakpadHandler {}
@@ -34,6 +57,7 @@ impl BreakpadHandler {
     /// handler can be attached at a time
     pub fn attach<P: AsRef<std::path::Path>>(
         crash_dir: P,
+        install_opts: InstallOptions,
         on_crash: Box<dyn CrashEvent>,
     ) -> Result<Self, Error> {
         if HANDLER_ATTACHED.compare_and_swap(false, true, atomic::Ordering::Relaxed) {
@@ -83,61 +107,23 @@ impl BreakpadHandler {
                 Box::leak(context);
             }
 
-            #[cfg(target_os = "macos")]
-            {
-                let pause_ctx = Box::new(atomic::AtomicBool::new(false));
+            let install_opts = match install_opts {
+                InstallOptions::NoHandlers => breakpad_sys::INSTALL_NO_HANDLER,
+                InstallOptions::ExceptionHandler => breakpad_sys::INSTALL_EXCEPTION_HANDLER,
+                InstallOptions::SignalHandler => breakpad_sys::INSTALL_SIGNAL_HANDLER,
+                InstallOptions::BothHandlers => breakpad_sys::INSTALL_BOTH_HANDLERS,
+            };
 
-                extern "C" fn pause_callback(ctx: *mut std::ffi::c_void) -> bool {
-                    let is_paused = unsafe { &*(ctx as *const atomic::AtomicBool) };
+            let handler = breakpad_sys::attach_exception_handler(
+                path.as_ptr(),
+                path.len(),
+                crash_callback,
+                on_crash,
+                install_opts,
+            );
 
-                    is_paused.load(atomic::Ordering::Relaxed)
-                }
-
-                let handler = breakpad_sys::attach_exception_handler(
-                    path.as_ptr(),
-                    path.len(),
-                    crash_callback,
-                    on_crash,
-                    Some(pause_callback),
-                    &*pause_ctx as *const atomic::AtomicBool as *mut _,
-                );
-
-                Ok(Self {
-                    handler,
-                    on_crash,
-                    pause_ctx,
-                })
-            }
-
-            #[cfg(not(target_os = "macos"))]
-            {
-                let handler = breakpad_sys::attach_exception_handler(
-                    path.as_ptr(),
-                    path.len(),
-                    crash_callback,
-                    on_crash,
-                    None,
-                    std::ptr::null_mut(),
-                );
-
-                Ok(Self { handler, on_crash })
-            }
+            Ok(Self { handler, on_crash })
         }
-    }
-
-    /// Pauses Breakpad's exception handler, temporarily pretending as if Breakpad
-    /// is not attached. This is exposed only when targetting on mac's, as this is
-    /// (usually) only needed when an application intentionally wants to handle
-    /// regular signals, but can't since breakpad's exception handler always
-    /// takes precedence.
-    #[cfg(target_os = "macos")]
-    pub fn pause(&self) {
-        self.pause_ctx.store(true, atomic::Ordering::Relaxed);
-    }
-
-    #[cfg(target_os = "macos")]
-    pub fn unpause(&self) {
-        self.pause_ctx.store(false, atomic::Ordering::Relaxed);
     }
 }
 

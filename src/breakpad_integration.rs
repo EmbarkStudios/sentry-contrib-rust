@@ -62,6 +62,8 @@ fn read_metadata_to_envelope(path: &std::path::Path, envelope: &mut protocol::En
     }
 }
 
+pub use breakpad_handler::InstallOptions;
+
 /// Integrates Breakpad crash handling and reporting
 pub struct BreakpadIntegration {
     crash_handler: Option<breakpad_handler::BreakpadHandler>,
@@ -73,6 +75,7 @@ impl BreakpadIntegration {
     /// in the application at a time!
     pub fn new<P: AsRef<std::path::Path>>(
         crash_dir: P,
+        install_options: InstallOptions,
         hub: std::sync::Arc<sentry_core::Hub>,
     ) -> Result<Self, crate::Error> {
         use std::io::Write;
@@ -84,6 +87,7 @@ impl BreakpadIntegration {
         let crash_hub = std::sync::Arc::downgrade(&hub);
         let crash_handler = breakpad_handler::BreakpadHandler::attach(
             &crash_dir,
+            install_options,
             Box::new(move |mut minidump_path: std::path::PathBuf| {
                 // Create an event for crash so that we can add all of the context
                 // we can to it, the important information like stack traces/threads

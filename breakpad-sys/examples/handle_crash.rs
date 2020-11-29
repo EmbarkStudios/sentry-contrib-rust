@@ -52,8 +52,7 @@ fn main() {
             path.len(),
             callback,
             std::ptr::null_mut(),
-            None,
-            std::ptr::null_mut(),
+            breakpad_sys::INSTALL_BOTH_HANDLERS,
         );
 
         if std::env::args().any(|a| a == "--crash") {

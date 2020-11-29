@@ -3,6 +3,7 @@ fn main() {
 
     let _handler = breakpad_handler::BreakpadHandler::attach(
         cur_dir,
+        breakpad_handler::InstallOptions::BothHandlers,
         Box::new(|minidump_path: std::path::PathBuf| {
             println!("Minidump written to {}", minidump_path.display());
 
