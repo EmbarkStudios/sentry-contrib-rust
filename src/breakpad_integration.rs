@@ -108,7 +108,9 @@ impl BreakpadIntegration {
                 // that we can serialize them to disk so that we can add them
                 // into the same envelope as the actual minidump
                 if let Some(crash_hub) = crash_hub.upgrade() {
-                    crash_hub.end_session_with_status(protocol::SessionStatus::Crashed);
+                    // We **don't** do this because otherwise we lose the session
+                    // so intead, grab the session and just update it ourselves
+                    // crash_hub.end_session_with_status(protocol::SessionStatus::Crashed);
                     if let Some(client) = crash_hub.client() {
                         crash_hub.configure_scope(|scope| {
                             let assembled = client.assemble_event(event, Some(scope));
@@ -122,6 +124,7 @@ impl BreakpadIntegration {
 
                 // Serialize the envelope then the session update to their own JSON line
                 if let Some(eve) = eve {
+                    debug_print!("serializing event to metadata");
                     if let Err(e) = serde_json::to_writer(&mut meta_data, &eve) {
                         debug_print!("failed to serialize event to crash metadata: {}", e);
                     }
@@ -129,7 +132,9 @@ impl BreakpadIntegration {
 
                 let _ = writeln!(&mut meta_data);
 
-                if let Some(su) = sess_update {
+                if let Some(mut su) = sess_update {
+                    su.status = protocol::SessionStatus::Crashed;
+                    debug_print!("serializing session update to metadata");
                     if let Err(e) = serde_json::to_writer(&mut meta_data, &su) {
                         debug_print!(
                             "failed to serialize session update to crash metadata: {}",
@@ -232,7 +237,7 @@ impl BreakpadIntegration {
             };
 
             envelope.add_item(protocol::EnvelopeItem::Attachment(protocol::Attachment {
-                buffer: std::sync::Arc::new(minidump_contents),
+                buffer: std::borrow::Cow::Owned(minidump_contents),
                 filename: minidump_path.file_name().unwrap().to_owned(),
                 ty: Some(protocol::AttachmentType::Minidump),
             }));
