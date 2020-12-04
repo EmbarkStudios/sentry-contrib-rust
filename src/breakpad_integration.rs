@@ -237,7 +237,7 @@ impl BreakpadIntegration {
             };
 
             envelope.add_item(protocol::EnvelopeItem::Attachment(protocol::Attachment {
-                buffer: std::borrow::Cow::Owned(minidump_contents),
+                buffer: minidump_contents,
                 filename: minidump_path.file_name().unwrap().to_string_lossy().into(),
                 ty: Some(protocol::AttachmentType::Minidump),
             }));
