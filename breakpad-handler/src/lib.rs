@@ -60,8 +60,14 @@ impl BreakpadHandler {
         install_opts: InstallOptions,
         on_crash: Box<dyn CrashEvent>,
     ) -> Result<Self, Error> {
-        if HANDLER_ATTACHED.compare_and_swap(false, true, atomic::Ordering::Relaxed) {
-            return Err(Error::HandlerAlreadyRegistered);
+        match HANDLER_ATTACHED.compare_exchange(
+            false,
+            true,
+            atomic::Ordering::Relaxed,
+            atomic::Ordering::Relaxed,
+        ) {
+            Ok(true) | Err(true) => return Err(Error::HandlerAlreadyRegistered),
+            _ => {}
         }
 
         let on_crash = Box::into_raw(Box::new(on_crash)) as *mut _;
