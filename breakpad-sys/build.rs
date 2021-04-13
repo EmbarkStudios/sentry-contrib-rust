@@ -10,14 +10,6 @@ fn add_sources(build: &mut cc::Build, root: &str, files: &[&str]) {
 }
 
 fn main() {
-    // Breakpad doesn't compile out of the box when targetting musl, better to
-    // just convert it Rust
-    if let Ok(env) = std::env::var("CARGO_CFG_TARGET_ENV") {
-        if env == "musl" {
-            panic!("musl is unfortunately not supported right now");
-        }
-    }
-
     let mut build = cc::Build::new();
 
     build
