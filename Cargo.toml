@@ -34,5 +34,5 @@ members = [
     "breakpad-sys",
 ]
 
-[patch.crates-io]
-sentry-core = { path = "../sentry-rust/sentry-core" }
+# [patch.crates-io]
+# sentry-core = { path = "../sentry-rust/sentry-core" }
