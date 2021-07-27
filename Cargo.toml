@@ -1,15 +1,15 @@
 [package]
 name = "sentry-contrib-breakpad"
 description = "Unopinionated crash collection for Sentry reporting purposes"
-repository = "https://github.com/EmbarkStudios/tame-sentry"
+repository = "https://github.com/EmbarkStudios/sentry-contrib-rust"
 version = "0.1.0"
 authors = ["Embark <opensource@embark-studios.com>"]
 edition = "2018"
 license = "MIT OR Apache-2.0"
 readme = "README.md"
-documentation = "https://docs.rs/tame-sentry"
-homepage = "https://github.com/EmbarkStudios/tame-sentry"
-keywords = ["breakpad", "sentry"]
+documentation = "https://docs.rs/sentry-contrib-breakpad"
+homepage = "https://github.com/EmbarkStudios/sentry-contrib-rust"
+keywords = ["breakpad", "sentry", "minidump", "crash"]
 exclude = [
     ".github",
     "release.toml",

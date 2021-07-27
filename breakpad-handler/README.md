@@ -1,21 +1,20 @@
-# 👁 sentry-contrib-breakpad
+# 👁 breakpad-handler
 
 [![Embark](https://img.shields.io/badge/embark-open%20source-blueviolet.svg)](https://embark.dev)
 [![Embark](https://img.shields.io/badge/discord-ark-%237289da.svg?logo=discord)](https://discord.gg/dAuKfZS)
-[![Crates.io](https://img.shields.io/crates/v/sentry-contrib-breakpad.svg)](https://crates.io/crates/sentry-contrib-breakpad)
-[![Docs](https://docs.rs/sentry-contrib-breakpad/badge.svg)](https://docs.rs/sentry-contrib-breakpad)
-[![dependency status](https://deps.rs/repo/github/EmbarkStudios/sentry-contrib-breakpad/status.svg)](https://deps.rs/repo/github/EmbarkStudios/sentry-contrib-breakpad)
+[![Crates.io](https://img.shields.io/crates/v/breakpad-handler.svg)](https://crates.io/crates/breakpad-handler)
+[![Docs](https://docs.rs/breakpad-handler/badge.svg)](https://docs.rs/breakpad-handler)
 [![Build status](https://github.com/EmbarkStudios/sentry-contrib-rust/workflows/CI/badge.svg)](https://github.com/EmbarkStudios/sentry-contrib-rust/actions)
 
-Provides a small library to integrate native crash dump handling with Sentry, without relying on [sentry-native](https://github.com/getsentry/sentry-native).
+Rust wrapper around the [breakpad-sys](https://crates.io/crates/breakpad-sys) crate.
 
 ## Contributing
 
-[![Contributor Covenant](https://img.shields.io/badge/contributor%20covenant-v1.4-ff69b4.svg)](CODE_OF_CONDUCT.md)
+[![Contributor Covenant](https://img.shields.io/badge/contributor%20covenant-v1.4-ff69b4.svg)](../CODE_OF_CONDUCT.md)
 
 We welcome community contributions to this project.
 
-Please read our [Contributor Guide](CONTRIBUTING.md) for more information on how to get started.
+Please read our [Contributor Guide](../CONTRIBUTING.md) for more information on how to get started.
 
 ## License
 
