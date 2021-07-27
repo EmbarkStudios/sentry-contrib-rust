@@ -1,6 +1,7 @@
 use sentry_core::{ClientOptions, Envelope, Transport, TransportFactory};
 use std::{sync::Arc, time::Duration};
 
+/// Determines how crashes are sent to Sentry after they have been captured.
 #[derive(Copy, Clone)]
 pub enum CrashSendStyle {
     /// Attempts to send crash envelopes immediately, in the same session that
@@ -13,6 +14,9 @@ pub enum CrashSendStyle {
     SendNextSession,
 }
 
+/// The [`TransportFactory`](https://docs.rs/sentry-core/0.23.0/sentry_core/trait.TransportFactory.html) implementation that must be used in concert with
+/// [BreakpadIntegration](crate::BreakpadIntegration) to report crash events to
+/// Sentry
 pub struct BreakpadTransportFactory {
     inner: Arc<dyn TransportFactory>,
     style: CrashSendStyle,
@@ -36,7 +40,7 @@ impl TransportFactory for BreakpadTransportFactory {
     }
 }
 
-pub struct BreakpadTransport {
+struct BreakpadTransport {
     inner: Arc<dyn Transport>,
     style: CrashSendStyle,
 }

@@ -3,7 +3,8 @@ use std::path::Path;
 
 pub use breakpad_handler::InstallOptions;
 
-/// Integrates Breakpad crash handling and reporting
+/// Monitors the current process for crashes, writing them to disk as minidumps
+/// and reporting the crash event to Sentry.
 pub struct BreakpadIntegration {
     crash_handler: Option<breakpad_handler::BreakpadHandler>,
 }

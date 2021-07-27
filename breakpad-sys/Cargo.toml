@@ -11,8 +11,9 @@ edition = "2018"
 # https://clearlydefined.io/definitions/git/github/google/breakpad/5bba75bfd6ec386b8e3af0b91332388a378135bf
 license = "BSD-3-Clause"
 documentation = "https://docs.rs/breakpad-sys"
-homepage = "https://github.com/EmbarkStudios/tame-sentry"
+homepage = "https://github.com/EmbarkStudios/sentry-contrib-rust/breakpad-sys"
 keywords = ["breakpad", "minidump", "crash"]
+readme = "README.md"
 exclude = [
     "breakpad/.github",
     "breakpad/android",

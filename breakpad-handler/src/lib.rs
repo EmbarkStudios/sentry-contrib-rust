@@ -3,6 +3,8 @@ pub use error::Error;
 
 use std::sync::atomic;
 
+/// Trait used by the crash handler to notify the implementor that a crash was
+/// captured, providing the full path on disk to that minidump.
 pub trait CrashEvent: Sync + Send {
     fn on_crash(&self, minidump_path: std::path::PathBuf);
 }
