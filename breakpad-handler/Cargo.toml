@@ -8,7 +8,7 @@ edition = "2018"
 license = "MIT OR Apache-2.0"
 documentation = "https://docs.rs/breakpad-handler"
 homepage = "https://github.com/EmbarkStudios/tame-sentry"
-keywords = ["breakpad"]
+keywords = ["breakpad", "minidump", "crash"]
 
 [dependencies]
 breakpad-sys = { version = "0.1.0", path = "../breakpad-sys" }

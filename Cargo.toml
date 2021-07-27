@@ -9,7 +9,7 @@ license = "MIT OR Apache-2.0"
 readme = "README.md"
 documentation = "https://docs.rs/tame-sentry"
 homepage = "https://github.com/EmbarkStudios/tame-sentry"
-keywords = ["breakpad", "sentry"]
+keywords = ["breakpad", "sentry", "minidump", "crash"]
 exclude = [
     ".github",
     "release.toml",

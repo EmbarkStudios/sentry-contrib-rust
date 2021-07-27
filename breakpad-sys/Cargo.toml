@@ -12,7 +12,7 @@ edition = "2018"
 license = "BSD-3-Clause"
 documentation = "https://docs.rs/breakpad-sys"
 homepage = "https://github.com/EmbarkStudios/tame-sentry"
-keywords = ["breakpad"]
+keywords = ["breakpad", "minidump", "crash"]
 exclude = [
     "breakpad/.github",
     "breakpad/android",
