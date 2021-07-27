@@ -4,6 +4,8 @@ use std::fmt;
 pub enum Error {
     Handler(breakpad_handler::Error),
     Io(std::io::Error),
+    /// Paths in some cases are required to be utf-8 compatible
+    NonUtf8Path(std::path::PathBuf),
 }
 
 impl std::error::Error for Error {
@@ -11,6 +13,7 @@ impl std::error::Error for Error {
         match self {
             Self::Handler(e) => Some(e),
             Self::Io(e) => Some(e),
+            Self::NonUtf8Path(_) => None,
         }
     }
 }
@@ -20,6 +23,7 @@ impl fmt::Display for Error {
         match self {
             Self::Handler(e) => write!(f, "handler error: {}", e),
             Self::Io(e) => write!(f, "io error: {}", e),
+            Self::NonUtf8Path(p) => write!(f, "{} is not a utf-8 path", p.display()),
         }
     }
 }
