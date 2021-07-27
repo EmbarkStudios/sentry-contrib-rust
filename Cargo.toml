@@ -36,4 +36,4 @@ members = [
 
 [patch.crates-io]
 #sentry-core = { path = "../sentry-rust/sentry-core" }
-sentry-core = { git = "https://github.com/EmbarkStudios/sentry-rust", rev = "7446104" }
+#sentry-core = { git = "https://github.com/EmbarkStudios/sentry-rust", rev = "7446104" }
