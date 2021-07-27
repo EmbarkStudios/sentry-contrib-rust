@@ -47,9 +47,7 @@ impl BreakpadTransport {
 
         match envelope.event() {
             // Check if this is actually a crash event
-            Some(eve) if !eve.extra.contains_key("__breakpad_minidump_path") => {
-                return Some(envelope);
-            }
+            Some(eve) if !eve.extra.contains_key("__breakpad_minidump_path") => Some(envelope),
             None => Some(envelope),
             Some(eve) => {
                 let mut event = eve.clone();
