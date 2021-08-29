@@ -2,6 +2,8 @@ mod error;
 pub use error::Error;
 
 mod minidump;
+#[cfg(unix)]
+mod page_allocator;
 
 cfg_if::cfg_if! {
     if #[cfg(any(target_os = "linux", target_os = "android"))] {
