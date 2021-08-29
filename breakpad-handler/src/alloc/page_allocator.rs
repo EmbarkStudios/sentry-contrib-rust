@@ -19,8 +19,8 @@ fn get_page_size() -> usize {
     }
 }
 
-#[derive(Debug)]
-pub(crate) struct AllocError;
+// #[derive(Debug)]
+// pub(crate) struct AllocError;
 
 /// Intrusively linked list. Since these are the page entries for the
 /// `PageAllocator` itself, they also can't be heap allocated, so each block of
@@ -58,7 +58,12 @@ impl PageAllocator {
         }
     }
 
-    pub(crate) fn alloc(&mut self, size: usize) -> Result<ptr::NonNull<u8>, AllocError> {
+    #[inline]
+    pub(crate) fn pages_allocated(&self) -> usize {
+        self.total_allocated_pages
+    }
+
+    pub(crate) fn alloc_raw(&mut self, size: usize) -> Result<ptr::NonNull<u8>, super::AllocError> {
         unsafe {
             let page_size = get_page_size();
 
@@ -73,7 +78,7 @@ impl PageAllocator {
                         self.current_page = None;
                     }
 
-                    return ptr::NonNull::new(ret).ok_or(AllocError);
+                    return ptr::NonNull::new(ret).ok_or(super::AllocError);
                 }
             }
 
@@ -102,7 +107,7 @@ impl PageAllocator {
         &mut self,
         page_size: usize,
         num_pages: usize,
-    ) -> Result<ptr::NonNull<u8>, AllocError> {
+    ) -> Result<ptr::NonNull<u8>, super::AllocError> {
         let alloced = libc::mmap(
             ptr::null_mut(),
             page_size * num_pages,
@@ -113,7 +118,7 @@ impl PageAllocator {
         );
 
         if alloced == libc::MAP_FAILED {
-            return Err(AllocError);
+            return Err(super::AllocError);
         }
 
         let last = alloced.cast::<PageHeader>();
@@ -143,6 +148,43 @@ impl PageAllocator {
             }
         }
     }
+
+    #[cfg(test)]
+    pub(crate) fn owns_pointer(&self, ptr: *const libc::c_void) -> bool {
+        unsafe {
+            let ptr = ptr.cast::<u8>();
+            let mut current = self.last;
+            let page_size = get_page_size();
+
+            while let Some(cur) = current {
+                let cur_ptr = cur.cast::<u8>();
+                if ptr >= cur_ptr && ptr < cur_ptr.offset(((*cur).num_pages * page_size) as isize) {
+                    return true;
+                }
+
+                current = (*cur).next;
+            }
+        }
+
+        false
+    }
+}
+
+unsafe impl super::AllocRef for PageAllocator {
+    fn alloc(&self, layout: std::alloc::Layout) -> Result<ptr::NonNull<[u8]>, super::AllocError> {
+        unsafe {
+            let alloced = (*(self as *const Self as *mut Self)).alloc_raw(layout.size())?;
+            Ok(ptr::NonNull::new_unchecked(std::slice::from_raw_parts_mut(
+                alloced.as_ptr(),
+                layout.size(),
+            )))
+        }
+    }
+
+    unsafe fn dealloc(&self, _ptr: ptr::NonNull<u8>, _layout: std::alloc::Layout) {
+        // We don't implement deallocation, so just have to wait until the entire
+        // allocator is dropped to free the memory
+    }
 }
 
 impl Drop for PageAllocator {
@@ -165,7 +207,7 @@ mod test {
     fn small_objects() {
         let mut pa = PageAllocator::new();
         for i in 1..1024 {
-            let alloced = pa.alloc(i).unwrap();
+            let alloced = pa.alloc_raw(i).unwrap();
             unsafe {
                 std::slice::from_raw_parts_mut(alloced.as_ptr(), i).fill(0);
             }
@@ -176,73 +218,16 @@ mod test {
     fn large_object() {
         let mut pa = PageAllocator::new();
 
-        pa.alloc(10 * 1024).unwrap();
+        pa.alloc_raw(10 * 1024).unwrap();
 
         let page_size = super::get_page_size();
         assert_eq!((10 * 1024 / page_size) + 1, pa.total_allocated_pages);
 
         for i in 1..10 {
-            let alloced = pa.alloc(i).unwrap();
+            let alloced = pa.alloc_raw(i).unwrap();
             unsafe {
                 std::slice::from_raw_parts_mut(alloced.as_ptr(), i).fill(0);
             }
         }
     }
 }
-
-//   namespace {
-//   typedef testing::Test WastefulVectorTest;
-//   }
-
-//   TEST(WastefulVectorTest, Setup) {
-//     PageAllocator allocator_;
-//     wasteful_vector<int> v(&allocator_);
-//     ASSERT_TRUE(v.empty());
-//     ASSERT_EQ(v.size(), 0u);
-//   }
-
-//   TEST(WastefulVectorTest, Simple) {
-//     PageAllocator allocator_;
-//     EXPECT_EQ(0U, allocator_.pages_allocated());
-//     wasteful_vector<unsigned> v(&allocator_);
-
-//     for (unsigned i = 0; i < 256; ++i) {
-//       v.push_back(i);
-//       ASSERT_EQ(i, v.back());
-//       ASSERT_EQ(&v.back(), &v[i]);
-//     }
-//     ASSERT_FALSE(v.empty());
-//     ASSERT_EQ(v.size(), 256u);
-//     EXPECT_EQ(1U, allocator_.pages_allocated());
-//     for (unsigned i = 0; i < 256; ++i)
-//       ASSERT_EQ(v[i], i);
-//   }
-
-//   TEST(WastefulVectorTest, UsesPageAllocator) {
-//     PageAllocator allocator_;
-//     wasteful_vector<unsigned> v(&allocator_);
-//     EXPECT_EQ(1U, allocator_.pages_allocated());
-
-//     v.push_back(1);
-//     ASSERT_TRUE(allocator_.OwnsPointer(&v[0]));
-//   }
-
-//   TEST(WastefulVectorTest, AutoWastefulVector) {
-//     PageAllocator allocator_;
-//     EXPECT_EQ(0U, allocator_.pages_allocated());
-
-//     auto_wasteful_vector<unsigned, 4> v(&allocator_);
-//     EXPECT_EQ(0U, allocator_.pages_allocated());
-
-//     v.push_back(1);
-//     EXPECT_EQ(0U, allocator_.pages_allocated());
-//     EXPECT_FALSE(allocator_.OwnsPointer(&v[0]));
-
-//     v.resize(4);
-//     EXPECT_EQ(0U, allocator_.pages_allocated());
-//     EXPECT_FALSE(allocator_.OwnsPointer(&v[0]));
-
-//     v.resize(10);
-//     EXPECT_EQ(1U, allocator_.pages_allocated());
-//     EXPECT_TRUE(allocator_.OwnsPointer(&v[0]));
-//   }
