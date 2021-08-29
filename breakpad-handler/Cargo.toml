@@ -7,9 +7,19 @@ authors = ["Embark <opensource@embark-studios.com>"]
 edition = "2018"
 license = "MIT OR Apache-2.0"
 documentation = "https://docs.rs/breakpad-handler"
-homepage = "https://github.com/EmbarkStudios/sentry-contrib-rust/breakpad-handler"
+homepage = "https://github.com/EmbarkStudios/sentry-contrib-rust/tree/main/breakpad-handler"
 keywords = ["breakpad", "minidump", "crash"]
 readme = "README.md"
 
 [dependencies]
 breakpad-sys = { version = "0.1.0", path = "../breakpad-sys" }
+
+backtrace = "0.3"
+cfg-if = "1.0"
+libc = "0.2"
+minidump-common = "0.3"
+parking_lot = "0.11"
+uuid = { version = "0.8", features = ["v4"] }
+
+[target.'cfg(any(target_os = "linux", target_os = "android"))'.dependencies]
+nix = "0.22"

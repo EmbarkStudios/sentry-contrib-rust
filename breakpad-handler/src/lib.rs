@@ -1,20 +1,30 @@
 mod error;
 pub use error::Error;
 
+mod minidump;
+
+cfg_if::cfg_if! {
+    if #[cfg(any(target_os = "linux", target_os = "android"))] {
+        mod linux;
+
+        pub use linux::ExceptionHandler;
+    }
+}
+
 use std::sync::atomic;
 
 /// Trait used by the crash handler to notify the implementor that a crash was
 /// captured, providing the full path on disk to that minidump.
 pub trait CrashEvent: Sync + Send {
-    fn on_crash(&self, minidump_path: std::path::PathBuf);
+    fn on_crash(&self, output: &minidump::MinidumpOutput, success: bool) -> bool;
 }
 
 impl<F> CrashEvent for F
 where
-    F: Fn(std::path::PathBuf) + Send + Sync,
+    F: Fn(&minidump::MinidumpOutput, bool) -> bool + Send + Sync,
 {
-    fn on_crash(&self, minidump_path: std::path::PathBuf) {
-        self(minidump_path)
+    fn on_crash(&self, output: &minidump::MinidumpOutput, success: bool) -> bool {
+        self(output, success)
     }
 }
 
@@ -111,7 +121,7 @@ impl BreakpadHandler {
                 };
 
                 let context: Box<Box<dyn CrashEvent>> = unsafe { Box::from_raw(ctx as *mut _) };
-                context.on_crash(path);
+                //context.on_crash(path);
                 Box::leak(context);
             }
 
