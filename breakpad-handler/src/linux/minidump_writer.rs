@@ -19,4 +19,21 @@ pub(crate) fn write_minidump(
     pid: libc::pid_t,
     context: &super::handler::CrashContext,
 ) {
+    //     LinuxPtraceDumper dumper(crashing_process);
+    //   const ExceptionHandler::CrashContext* context = NULL;
+    //   if (blob) {
+    //     if (blob_size != sizeof(ExceptionHandler::CrashContext))
+    //       return false;
+    //     context = reinterpret_cast<const ExceptionHandler::CrashContext*>(blob);
+    //     dumper.SetCrashInfoFromSigInfo(context->siginfo);
+    //     dumper.set_crash_thread(context->tid);
+    //   }
+    //   MinidumpWriter writer(minidump_path, minidump_fd, context, mappings,
+    //                         appmem, skip_stacks_if_mapping_unreferenced,
+    //                         principal_mapping_address, sanitize_stacks, &dumper);
+    //   // Set desired limit for file size of minidump (-1 means no limit).
+    //   writer.set_minidump_size_limit(minidump_size_limit);
+    //   if (!writer.Init())
+    //     return false;
+    //   return writer.Dump();
 }

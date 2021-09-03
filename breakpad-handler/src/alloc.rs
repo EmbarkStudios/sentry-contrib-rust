@@ -4,6 +4,9 @@ mod page_allocator;
 mod page_vec;
 mod raw_vec;
 
+pub(crate) use page_allocator::PageAllocator;
+pub(crate) use page_vec::PageVec;
+
 use std::{
     alloc::{Layout, LayoutError},
     fmt,
