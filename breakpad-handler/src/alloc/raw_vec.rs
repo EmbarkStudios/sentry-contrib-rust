@@ -1,4 +1,4 @@
-#![allow(unused_unsafe, dead_code, clippy::clippy::integer_division)]
+#![allow(unused_unsafe, dead_code, clippy::integer_division)]
 
 use super::{AllocRef, TryReserveError};
 use std::{

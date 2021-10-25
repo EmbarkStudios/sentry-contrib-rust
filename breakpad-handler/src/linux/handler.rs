@@ -324,14 +324,14 @@ unsafe extern "C" fn signal_handler(
 
 pub(crate) struct CrashContext {
     /// The signal info for the crash
-    siginfo: libc::siginfo_t,
+    pub(crate) siginfo: nix::sys::signalfd::siginfo,
     /// The crashing thread
-    tid: libc::pid_t,
-    context: libc::ucontext_t,
+    pub(crate) tid: libc::pid_t,
+    pub(crate) context: libc::ucontext_t,
     /// Float state. This isn't part of the user ABI for Linux aarch, and is
     /// already part of ucontext_t in mips
     #[cfg(not(all(target_arch = "aarch", target_arch = "mips", target_arch = "mips64")))]
-    float_state: libc::_libc_fpstate,
+    pub(crate) float_state: libc::_libc_fpstate,
 }
 
 unsafe impl Send for CrashContext {}
@@ -426,7 +426,7 @@ impl HandlerInner {
         let mut crash_ctx = CRASH_CONTEXT.lock();
 
         *crash_ctx = mem::MaybeUninit::zeroed();
-        ptr::copy_nonoverlapping(info, &mut (*(*crash_ctx).as_mut_ptr()).siginfo, 1);
+        ptr::copy_nonoverlapping(nix_info, &mut (*(*crash_ctx).as_mut_ptr()).siginfo, 1);
         ptr::copy_nonoverlapping(
             (uc as *mut libc::c_void).cast::<libc::ucontext_t>(),
             (&mut (*(*crash_ctx).as_mut_ptr()).context) as *mut libc::ucontext_t,

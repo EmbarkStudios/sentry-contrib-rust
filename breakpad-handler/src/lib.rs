@@ -4,6 +4,7 @@ pub use error::Error;
 #[cfg(unix)]
 mod alloc;
 mod minidump;
+mod utils;
 
 cfg_if::cfg_if! {
     if #[cfg(any(target_os = "linux", target_os = "android"))] {

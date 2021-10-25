@@ -7,7 +7,7 @@ use std::{mem, ptr};
 // This function will only call `expensive_computation` once, and will
 // otherwise always return the value returned from the first invocation.
 #[inline]
-fn get_page_size() -> usize {
+pub(crate) fn get_page_size() -> usize {
     static mut PAGE_SIZE: usize = 0;
     static INIT_PAGE_SIZE: parking_lot::Once = parking_lot::Once::new();
 

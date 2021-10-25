@@ -15,3 +15,9 @@ impl MinidumpOutput {
         Self::Path(pb)
     }
 }
+
+pub(crate) use minidump_common::format::{
+    self, MINIDUMP_DIRECTORY as Directory, MINIDUMP_HEADER as Header,
+    MINIDUMP_LOCATION_DESCRIPTOR as Location, MINIDUMP_STREAM_TYPE as StreamType,
+    MINIDUMP_THREAD as Thread,
+};
