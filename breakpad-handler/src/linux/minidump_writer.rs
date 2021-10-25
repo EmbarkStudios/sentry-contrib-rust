@@ -1,3 +1,7 @@
+use super::{file_writer::FileWriter, ptrace_dumper::PTraceDumper};
+use crate::{linux::handler::CrashContext, minidump::*, Error};
+use std::{mem, ptr};
+
 // Writes a minidump to the filesystem. These functions do not malloc nor use
 // libc functions which may. Thus, it can be used in contexts where the state
 // of the heap may be corrupt.
@@ -14,11 +18,257 @@
 //     uintptr_t principal_mapping_address = 0,
 //     bool sanitize_stacks = false);
 
+pub struct MinidumpSettings {
+    pub skip_stacks_if_mapping_is_unreferenced: bool,
+    pub size_limit: Option<usize>,
+}
+
+struct MinidumpWriter<'crash> {
+    settings: MinidumpSettings,
+    dumper: PTraceDumper,
+    context: &'crash CrashContext,
+}
+
+impl<'crash> MinidumpWriter<'crash> {
+    fn init(&mut self) -> Result<(), Error> {
+        self.dumper.init()?;
+        self.dumper.suspend_threads()?;
+        self.dumper.late_init()?;
+
+        if self.settings.skip_stacks_if_mapping_is_unreferenced {
+            // self.principal_mapping_address = self
+            //     .dumper
+            //     .find_mapping_without_bias(self.principal_mapping_address);
+
+            // if !self.crashing_thread_references_principal_mapping() {
+            //     return Err(Error::PrincipalMappingUnreferenced);
+            // }
+        }
+
+        Ok(())
+    }
+
+    fn dump(self, file: &mut std::fs::File) -> Result<(), Error> {
+        // A minidump file contains a number of tagged streams. This is the
+        // number of stream which we write.
+        const NUM_STREAMS: u32 = 13;
+
+        let mut fw = super::file_writer::FileWriter::new(file);
+
+        // Ensure the header gets flushed, as that happens in the destructor.
+        // If a crash occurs somewhere below, at least the header will be
+        // intact.
+        {
+            let item = fw.reserve::<Header>()?;
+            item.write(
+                Header {
+                    signature: format::MINIDUMP_SIGNATURE,
+                    version: format::MINIDUMP_VERSION,
+                    time_date_stamp: unsafe {
+                        let time = libc::time(ptr::null_mut());
+                        time as u32
+                    },
+                    stream_count: NUM_STREAMS,
+                    stream_directory_rva: mem::size_of::<Header>() as u32,
+                    checksum: 0,
+                    flags: 0,
+                },
+                &mut fw,
+            )?;
+
+            fw.flush()?;
+        }
+
+        let dir = fw.reserve_array(NUM_STREAMS as usize)?;
+        let mut dir_index = 0;
+
+        dir.write(dir_index, self.write_thread_list(&mut fw)?, &mut fw)?;
+        dir_index += 1;
+
+        Ok(())
+    }
+
+    fn write_thread_list(&self, fw: &mut FileWriter<'_>) -> Result<Directory, Error> {
+        let num_threads = self.dumper.threads.iter().filter(|t| t.is_some()).count();
+
+        // typedef struct {
+        //     uint32_t             thread_id;
+        //     uint32_t             suspend_count;
+        //     uint32_t             priority_class;
+        //     uint32_t             priority;
+        //     uint64_t             teb;             /* Thread environment block */
+        //     MDMemoryDescriptor   stack;
+        //     MDLocationDescriptor thread_context;  /* MDRawContext[CPU] */
+        //   } MDRawThread;  /* MINIDUMP_THREAD */
+        //   typedef struct {
+        //     uint32_t    number_of_threads;
+        //     MDRawThread threads[1];
+        //   } MDRawThreadList;  /* MINIDUMP_THREAD_LIST */
+        let tlist = fw.reserve_header_array::<u32, Thread>(num_threads)?;
+        tlist.write_header(num_threads as u32, fw)?;
+
+        let dir_ent = Directory {
+            stream_type: StreamType::ThreadListStream,
+            location: tlist.location(),
+        };
+
+        // Number of threads whose stack size we don't want to limit.  These base
+        // threads will simply be the first N threads returned by the dumper (although
+        // the crashing thread will never be limited).  Threads beyond this count are
+        // the extra threads.
+        const LIMIT_BASE_THREAD_COUNT: usize = 20;
+
+        // If the minidump's total output size is being limited, we try and stay
+        // within that limit by reducing the amount of stack data written for "extra"
+        // threads beyond the first "base" threads. The crashing thread is never limited.
+        let extra_thread_stack_len = self.settings.size_limit.and_then(|md_size_limit| {
+            // Estimate for how big each thread's stack will be (in bytes).
+            const LIMIT_AVG_STACK_LEN: usize = 8 * 1024;
+            // Make sure this number of additional bytes can fit in the minidump
+            // (exclude the stack data).
+            const FUDGE_FACTOR: usize = 64 * 1024;
+            // Maximum stack size to dump for any extra thread (in bytes).
+            const MAX_EXTRA_THREAD_STACK: usize = 2 * 1024;
+
+            let estimated_total_stack_size = num_threads * num_threads;
+            let estimated_minidump_size =
+                fw.pos as usize + estimated_total_stack_size + FUDGE_FACTOR;
+
+            if estimated_minidump_size > md_size_limit {
+                Some(MAX_EXTRA_THREAD_STACK)
+            } else {
+                None
+            }
+        });
+
+        for (counter, thread_id) in self
+            .dumper
+            .threads
+            .iter()
+            .filter_map(|tid| *tid)
+            .enumerate()
+        {
+            // If this is the crashing thread we need to gather the thread
+            // information from crash context, as otherwise it will just point
+            // to our signal handler
+            if thread_id == self.context.tid {
+            } else {
+                let tinfo = PTraceDumper::get_thread_info(thread_id)?;
+
+                let stack_size_limit = extra_thread_stack_len.and_then(|size| {
+                    if counter >= LIMIT_BASE_THREAD_COUNT {
+                        Some(size)
+                    } else {
+                        None
+                    }
+                });
+
+
+            }
+        }
+
+        Ok(dir_ent)
+    }
+
+    fn fill_thread_stack(&self, fw: &mut FileWriter<'_>, thread_info: &ThreadInfo, max_stack_len: Option<usize>) -> Result<(Thread, *const u8), Error> {
+        let mut thread: Thread = std::mem::zeroed();
+
+        thread.stack.start_of_memory_range = thread_info.stack_pointer as u64;
+        thread.stack.memory.data_size = 0;
+        thread.stack.memory.rva = fw.pos as u32;
+
+        if let Some(stack) = self.dumper.get_stack_info(thread_info.stack_pointer) {
+            
+        }
+
+        Ok(thread)
+        
+        // const void* stack;
+        // size_t stack_len;
+
+        // thread->stack.start_of_memory_range = stack_pointer;
+        // thread->stack.memory.data_size = 0;
+        // thread->stack.memory.rva = minidump_writer_.position();
+
+        // if (dumper_->GetStackInfo(&stack, &stack_len, stack_pointer)) {
+        // if (max_stack_len >= 0 &&
+        // stack_len > static_cast<unsigned int>(max_stack_len)) {
+        // stack_len = max_stack_len;
+        // // Skip empty chunks of length max_stack_len.
+        // uintptr_t int_stack = reinterpret_cast<uintptr_t>(stack);
+        // if (max_stack_len > 0) {
+        // while (int_stack + max_stack_len < stack_pointer) {
+        // int_stack += max_stack_len;
+        // }
+        // }
+        // stack = reinterpret_cast<const void*>(int_stack);
+        // }
+        // *stack_copy = reinterpret_cast<uint8_t*>(Alloc(stack_len));
+        // dumper_->CopyFromProcess(*stack_copy, thread->thread_id, stack,
+        //                 stack_len);
+
+        // uintptr_t stack_pointer_offset =
+        // stack_pointer - reinterpret_cast<uintptr_t>(stack);
+        // if (skip_stacks_if_mapping_unreferenced_) {
+        // if (!principal_mapping_) {
+        // return true;
+        // }
+        // uintptr_t low_addr = principal_mapping_->system_mapping_info.start_addr;
+        // uintptr_t high_addr = principal_mapping_->system_mapping_info.end_addr;
+        // if ((pc < low_addr || pc > high_addr) &&
+        // !dumper_->StackHasPointerToMapping(*stack_copy, stack_len,
+        //                                 stack_pointer_offset,
+        //                                 *principal_mapping_)) {
+        // return true;
+        // }
+        // }
+
+        // if (sanitize_stacks_) {
+        // dumper_->SanitizeStackCopy(*stack_copy, stack_len, stack_pointer,
+        //                     stack_pointer_offset);
+        // }
+
+        // UntypedMDRVA memory(&minidump_writer_);
+        // if (!memory.Allocate(stack_len))
+        // return false;
+        // memory.Copy(*stack_copy, stack_len);
+        // thread->stack.start_of_memory_range = reinterpret_cast<uintptr_t>(stack);
+        // thread->stack.memory = memory.location();
+        // memory_blocks_.push_back(thread->stack);
+        // }
+        // return true;
+        // }
+}
+
+impl<'crash> Drop for MinidumpWriter<'crash> {
+    fn drop(&mut self) {
+        self.dumper.resume_threads().ok();
+    }
+}
+
 pub(crate) fn write_minidump(
     output: &crate::minidump::MinidumpOutput,
     pid: libc::pid_t,
-    context: &super::handler::CrashContext,
-) {
+    context: &CrashContext,
+) -> Result<(), Error> {
+    let pid = if pid <= 0 {
+        return Err(Error::InvalidArgs);
+    } else {
+        std::num::NonZeroU32::new(pid as u32).unwrap()
+    };
+
+    let ptd = PTraceDumper::new(pid, context);
+
+    let mut mdw = MinidumpWriter {
+        settings: MinidumpSettings {
+            skip_stacks_if_mapping_is_unreferenced: false,
+        },
+        dumper: ptd,
+        context,
+    };
+
+    mdw.init()?;
+
     //     LinuxPtraceDumper dumper(crashing_process);
     //   const ExceptionHandler::CrashContext* context = NULL;
     //   if (blob) {
