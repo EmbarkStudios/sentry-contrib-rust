@@ -23,6 +23,8 @@ impl fmt::Display for AllocError {
     }
 }
 
+impl std::error::Error for AllocError {}
+
 /// The error type for `try_reserve` methods.
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub enum TryReserveError {

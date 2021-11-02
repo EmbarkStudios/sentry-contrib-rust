@@ -134,9 +134,9 @@ impl ThreadInfo {
 
             #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
             let debug_regs = {
-                let mut dregs = [DebugReg; 8];
+                let mut dregs = [0; 8];
 
-                for i in dregs.len() {
+                for i in 0..dregs.len() {
                     let offset = memoffset::offset_of!(libc::user, u_debugreg)
                         + i * mem::size_of::<DebugReg>();
 

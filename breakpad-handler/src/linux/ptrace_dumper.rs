@@ -227,6 +227,13 @@ struct MappingInfo {
     name: utils::FixedStr<255>,
 }
 
+impl MappingInfo {
+    #[inline]
+    pub fn contains_address(&self, address: usize) -> bool {
+        self.start_addr <= address && self.start_addr + self.size > address
+    }
+}
+
 impl std::str::FromStr for MappingInfo {
     type Err = Error;
 
@@ -289,13 +296,16 @@ pub(crate) struct PTraceDumper {
     mappings: PageVec<MappingInfo>,
     /// Info from /proc/<pid>/auxv
     auxv: PageVec<Option<usize>>,
+    /// True if threads are currently suspended
     threads_suspended: bool,
 }
 
 impl PTraceDumper {
-    pub fn new(crashing_process: std::num::NonZeroU32, cc: &super::handler::CrashContext) -> Self {
-        let allocator = Allocator::new();
-
+    pub fn new(
+        allocator: Allocator,
+        crashing_process: std::num::NonZeroU32,
+        cc: &super::handler::CrashContext,
+    ) -> Self {
         Self {
             root_prefix: "",
             crash_address: cc.siginfo.ssi_addr as usize,
@@ -459,6 +469,16 @@ impl PTraceDumper {
         }
 
         Ok(())
+    }
+
+    /// Find the mapping which the given memory address falls in. Uses the
+    /// unadjusted mapping address range from the kernel, rather than the
+    /// biased range.
+    #[inline]
+    pub fn find_mapping_no_bias(&self, address: usize) -> Option<&MappingInfo> {
+        self.mappings
+            .iter()
+            .find(|mapping| mapping.contains_address(address))
     }
 
     pub fn suspend_threads(&mut self) -> Result<(), Error> {
@@ -658,13 +678,137 @@ impl PTraceDumper {
 
         self.mappings.iter().find_map(|mapping| {
             if stack_ptr >= mapping.start_addr && stack_ptr - mapping.start_addr < mapping.size {
-                let len = std::cmp::min(mapping.size - stack_ptr - mapping.start, 32 * 1024);
+                let len = std::cmp::min(mapping.size - stack_ptr - mapping.start_addr, 32 * 1024);
 
                 Some(std::slice::from_raw_parts(stack_ptr as *const u8, len))
             } else {
                 None
             }
         })
+    }
+
+    pub unsafe fn copy_from_process(&self, child: libc::pid_t, dest: &mut [u8], src: &[u8]) {
+        // PTRACE_PEEKDATA works in word sizes
+        let mut word = 0usize;
+        let word_size = std::mem::size_of::<usize>();
+
+        let mut copied = 0;
+
+        while copied < src.len() {
+            let len = if src.len() - copied > word_size {
+                word_size
+            } else {
+                src.len() - copied
+            };
+
+            if libc::ptrace(
+                libc::PTRACE_PEEKDATA,
+                child,
+                src.as_ptr().offset(copied as isize),
+                &mut word as *mut _,
+            ) == -1
+            {
+                word = 0;
+            }
+
+            dest[copied..copied + len].copy_from_slice(&word.to_ne_bytes()[..len]);
+            copied += len;
+        }
+    }
+
+    /// Sanitizes a block of stack memory by overwriting words that are not
+    /// pointers with a sentinel value,  `0x0defaced`, to strip potentially
+    /// **P**ersonal **I**dentifiable **I**nformation
+    pub fn sanitize_stack(&self, stack: &mut [u8], original_stack: usize, offset: usize) {
+        cfg_if::cfg_if! {
+            if #[cfg(target_pointer_width = "32")] {
+                const SENTINEL: usize = 0x0defaced;
+            } else if #[cfg(target_pointer_width = "64")] {
+                const SENTINEL: usize = 0x0defaced0defaced;
+            } else {
+                compile_error!("invalid target_pointer_width");
+            }
+        }
+
+        const TEST_BITS: u32 = 11;
+        const ARRAY_SIZE: usize = 1 << (TEST_BITS - 3);
+        const ARRAY_MASK: usize = ARRAY_SIZE - 1;
+        const SHIFT: u32 = 32 - TEST_BITS;
+        const SMALL_INT_MAGNITUDE: isize = 4 * 1024;
+
+        let mut last_hit_mapping: Option<&MappingInfo> = None;
+        let stack_mapping = self.find_mapping_no_bias(original_stack);
+
+        let mut could_hit_mapping = [0u8; ARRAY_SIZE];
+
+        for mapping in self.mappings.as_slice() {
+            if !mapping.has_exec {
+                continue;
+            }
+
+            let start = mapping.start_addr >> SHIFT;
+            let end = (mapping.start_addr + mapping.size) >> SHIFT;
+
+            for bit in start..=end {
+                could_hit_mapping[(bit >> 3) & ARRAY_MASK] |= 1 << (bit & 7);
+            }
+        }
+
+        // Zero memory that is below the current stack pointer.
+        let zero_offset =
+            (offset + std::mem::size_of::<usize>() - 1) & !(std::mem::size_of::<usize>() - 1);
+        if zero_offset > 0 {
+            stack[..zero_offset].fill(0);
+        }
+
+        // Apply sanitization to each complete pointer-aligned word in the stack.
+        unsafe {
+            let mut sp: *mut usize = stack.as_mut_ptr().offset(zero_offset as isize).cast();
+            let end: *mut usize = stack
+                .as_mut_ptr()
+                .offset((stack.len() - std::mem::size_of::<usize>()) as isize)
+                .cast();
+
+            while sp <= end {
+                let addr = sp.read();
+
+                if addr as isize <= SMALL_INT_MAGNITUDE && addr as isize >= -SMALL_INT_MAGNITUDE {
+                    continue;
+                }
+
+                if let Some(sm) = stack_mapping {
+                    if sm.contains_address(addr) {
+                        continue;
+                    }
+                }
+
+                if let Some(sm) = last_hit_mapping {
+                    if sm.contains_address(addr) {
+                        continue;
+                    }
+                }
+
+                let test = addr >> SHIFT;
+
+                if could_hit_mapping[(test >> 3) & ARRAY_MASK] & (1 << (test & 7)) != 0 {
+                    if let Some(mapping) = self
+                        .find_mapping_no_bias(addr)
+                        .filter(|mapping| mapping.has_exec)
+                    {
+                        last_hit_mapping = Some(mapping);
+                        continue;
+                    }
+                }
+
+                sp.write(SENTINEL);
+                sp = sp.offset(1);
+            }
+
+            let partial = stack.len() % std::mem::size_of::<usize>();
+            if partial > 0 {
+                stack[stack.len() - partial..].fill(0);
+            }
+        }
     }
 }
 

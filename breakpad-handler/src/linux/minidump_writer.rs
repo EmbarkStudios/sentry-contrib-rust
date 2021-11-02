@@ -1,6 +1,20 @@
 use super::{file_writer::FileWriter, ptrace_dumper::PTraceDumper};
-use crate::{linux::handler::CrashContext, minidump::*, Error};
+use crate::{
+    alloc::{Allocator, PageVec},
+    linux::handler::CrashContext,
+    minidump::*,
+};
 use std::{mem, ptr};
+
+#[derive(thiserror::Error, Debug)]
+pub enum WriterError {
+    #[error(transparent)]
+    ProcTrace(#[from] super::ptrace_dumper::Error),
+    #[error(transparent)]
+    Io(#[from] std::io::Error),
+    #[error(transparent)]
+    Alloc(#[from] crate::alloc::AllocError),
+}
 
 // Writes a minidump to the filesystem. These functions do not malloc nor use
 // libc functions which may. Thus, it can be used in contexts where the state
@@ -21,16 +35,20 @@ use std::{mem, ptr};
 pub struct MinidumpSettings {
     pub skip_stacks_if_mapping_is_unreferenced: bool,
     pub size_limit: Option<usize>,
+    // If true, apply stack sanitization to stored stack data to remove PII
+    pub sanitize_stacks: bool,
 }
 
 struct MinidumpWriter<'crash> {
     settings: MinidumpSettings,
     dumper: PTraceDumper,
     context: &'crash CrashContext,
+    allocator: Allocator,
+    memory_blocks: PageVec<MemoryDescriptor>,
 }
 
 impl<'crash> MinidumpWriter<'crash> {
-    fn init(&mut self) -> Result<(), Error> {
+    fn init(&mut self) -> Result<(), WriterError> {
         self.dumper.init()?;
         self.dumper.suspend_threads()?;
         self.dumper.late_init()?;
@@ -48,7 +66,7 @@ impl<'crash> MinidumpWriter<'crash> {
         Ok(())
     }
 
-    fn dump(self, file: &mut std::fs::File) -> Result<(), Error> {
+    fn dump(self, file: &mut std::fs::File) -> Result<(), WriterError> {
         // A minidump file contains a number of tagged streams. This is the
         // number of stream which we write.
         const NUM_STREAMS: u32 = 13;
@@ -88,7 +106,7 @@ impl<'crash> MinidumpWriter<'crash> {
         Ok(())
     }
 
-    fn write_thread_list(&self, fw: &mut FileWriter<'_>) -> Result<Directory, Error> {
+    fn write_thread_list(&self, fw: &mut FileWriter<'_>) -> Result<Directory, WriterError> {
         let num_threads = self.dumper.threads.iter().filter(|t| t.is_some()).count();
 
         // typedef struct {
@@ -108,7 +126,7 @@ impl<'crash> MinidumpWriter<'crash> {
         tlist.write_header(num_threads as u32, fw)?;
 
         let dir_ent = Directory {
-            stream_type: StreamType::ThreadListStream,
+            stream_type: StreamType::ThreadListStream as u32,
             location: tlist.location(),
         };
 
@@ -132,7 +150,7 @@ impl<'crash> MinidumpWriter<'crash> {
 
             let estimated_total_stack_size = num_threads * num_threads;
             let estimated_minidump_size =
-                fw.pos as usize + estimated_total_stack_size + FUDGE_FACTOR;
+                fw.position() as usize + estimated_total_stack_size + FUDGE_FACTOR;
 
             if estimated_minidump_size > md_size_limit {
                 Some(MAX_EXTRA_THREAD_STACK)
@@ -148,10 +166,10 @@ impl<'crash> MinidumpWriter<'crash> {
             .filter_map(|tid| *tid)
             .enumerate()
         {
-            // If this is the crashing thread we need to gather the thread
-            // information from crash context, as otherwise it will just point
-            // to our signal handler
-            if thread_id == self.context.tid {
+            // If this is the crashing thread, we need to gather the thread
+            // information from the crash context, as otherwise it will just
+            // point to our signal handler
+            if thread_id == self.context.tid as u32 {
             } else {
                 let tinfo = PTraceDumper::get_thread_info(thread_id)?;
 
@@ -162,27 +180,72 @@ impl<'crash> MinidumpWriter<'crash> {
                         None
                     }
                 });
-
-
             }
         }
 
         Ok(dir_ent)
     }
 
-    fn fill_thread_stack(&self, fw: &mut FileWriter<'_>, thread_info: &ThreadInfo, max_stack_len: Option<usize>) -> Result<(Thread, *const u8), Error> {
+    unsafe fn fill_thread_stack(
+        &self,
+        fw: &mut FileWriter<'_>,
+        thread_id: u32,
+        thread_info: &crate::linux::ThreadInfo,
+        max_stack_len: Option<usize>,
+    ) -> Result<Thread, WriterError> {
         let mut thread: Thread = std::mem::zeroed();
 
         thread.stack.start_of_memory_range = thread_info.stack_pointer as u64;
         thread.stack.memory.data_size = 0;
-        thread.stack.memory.rva = fw.pos as u32;
+        thread.stack.memory.rva = fw.position() as u32;
 
-        if let Some(stack) = self.dumper.get_stack_info(thread_info.stack_pointer) {
-            
+        if let Some(mut stack) = self.dumper.get_stack_info(thread_info.stack_pointer) {
+            // Shorten the stack if the user has set a max length
+            if let Some(max_len) = max_stack_len {
+                if stack.len() > max_len {
+                    let mut stack_ptr = stack.as_ptr();
+                    loop {
+                        let chunk_ptr = stack_ptr.offset(max_len as isize);
+
+                        if (chunk_ptr as usize) >= thread_info.stack_pointer {
+                            break;
+                        }
+
+                        stack_ptr = chunk_ptr;
+                    }
+
+                    stack = std::slice::from_raw_parts(stack_ptr, max_len);
+                }
+            }
+
+            let mut stack_copy = self.alloc_raw(stack.len())?;
+
+            self.dumper
+                .copy_from_process(thread_id as libc::pid_t, stack_copy.as_mut(), stack);
+
+            let stack_pointer_offset = thread_info.stack_pointer - stack.as_ptr() as usize;
+
+            if self.settings.skip_stacks_if_mapping_is_unreferenced {
+                // TODO: Skip if unreferenced
+            }
+
+            if self.settings.sanitize_stacks {
+                self.dumper.sanitize_stack(
+                    stack_copy.as_mut(),
+                    stack.as_ptr() as usize,
+                    stack_pointer_offset,
+                );
+            }
+
+            let memory_res = fw.reserve_raw(stack_copy.as_ref().len() as u64)?;
+            fw.write(memory_res, 0, stack_copy.as_ref())?;
+
+            thread.stack.start_of_memory_range = stack_copy.as_ref().as_ptr() as u64;
+            thread.stack.memory = memory_res.into();
         }
 
         Ok(thread)
-        
+
         // const void* stack;
         // size_t stack_len;
 
@@ -238,6 +301,15 @@ impl<'crash> MinidumpWriter<'crash> {
         // }
         // return true;
         // }
+    }
+
+    #[inline]
+    fn alloc_raw(&self, size: usize) -> Result<std::ptr::NonNull<[u8]>, WriterError> {
+        use crate::alloc::AllocRef;
+        self.allocator
+            .alloc(std::alloc::Layout::array::<u8>(size).unwrap())
+            .map_err(WriterError::Alloc)
+    }
 }
 
 impl<'crash> Drop for MinidumpWriter<'crash> {
@@ -250,14 +322,16 @@ pub(crate) fn write_minidump(
     output: &crate::minidump::MinidumpOutput,
     pid: libc::pid_t,
     context: &CrashContext,
-) -> Result<(), Error> {
+) -> Result<(), WriterError> {
     let pid = if pid <= 0 {
         return Err(Error::InvalidArgs);
     } else {
         std::num::NonZeroU32::new(pid as u32).unwrap()
     };
 
-    let ptd = PTraceDumper::new(pid, context);
+    let allocator = Allocator::new();
+
+    let ptd = PTraceDumper::new(allocator.clone(), pid, context);
 
     let mut mdw = MinidumpWriter {
         settings: MinidumpSettings {
@@ -265,6 +339,8 @@ pub(crate) fn write_minidump(
         },
         dumper: ptd,
         context,
+        memory_blocks: PageVec::new_in(allocator.clone()),
+        allocator,
     };
 
     mdw.init()?;
