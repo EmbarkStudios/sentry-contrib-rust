@@ -327,11 +327,78 @@ pub(crate) struct CrashContext {
     pub(crate) siginfo: nix::sys::signalfd::siginfo,
     /// The crashing thread
     pub(crate) tid: libc::pid_t,
-    pub(crate) context: libc::ucontext_t,
+    pub(crate) context: Option<crate::linux::UContext>,
     /// Float state. This isn't part of the user ABI for Linux aarch, and is
     /// already part of ucontext_t in mips
     #[cfg(not(all(target_arch = "aarch", target_arch = "mips", target_arch = "mips64")))]
     pub(crate) float_state: libc::_libc_fpstate,
+}
+
+impl CrashContext {
+    pub(crate) fn get_cpu_context(&self) -> Option<super::thread_info::RawContextCpu> {
+        let mut cpu_ctx = self.context.map(|uc| uc.get_cpu_context())?;
+
+        #[cfg(not(all(target_arch = "aarch", target_arch = "mips", target_arch = "mips64")))]
+        {
+            cfg_if::cfg_if! {
+                if #[cfg(target_arch = "x86")] {
+                    compile_error!("impelement me");
+                } else if #[cfg(target_arch = "x86_64")] {
+                    struct FloatSave {
+                        control_word: u16,
+                        status_word: u16,
+                        tag_word: u8,
+                        reserved1: u8,
+                        error_opcode: u16,
+                        error_offset: u32,
+                        error_selector: u16,
+                        reserved2: u16,
+                        data_offset: u32,
+                        data_selector: u16,
+                        reserved3: u16,
+                        mx_csr: u32,
+                        mx_csr_mask: u32,
+                        float_registers: [u128; 8],
+                        xmm_registers: [u128; 16],
+                        reserved4: [u8; 96],
+                    }
+
+                    let fpregs = &self.float_state;
+
+                    let mut fs = FloatSave {
+                        control_word: fpregs.cwd,
+                        status_word: fpregs.swd,
+                        tag_word: fpregs.ftw as u8,
+                        error_opcode: fpregs.fop,
+                        error_offset: fpregs.rip as u32,
+                        // We don't have these
+                        error_selector: 0,
+                        data_selector: 0,
+                        data_offset: fpregs.rdp as u32,
+                        mx_csr: fpregs.mxcsr,
+                        mx_csr_mask: fpregs.mxcr_mask,
+                        float_registers: [0; 8],
+                        xmm_registers: [0; 16],
+                        reserved1: 0,
+                        reserved2: 0,
+                        reserved3: 0,
+                        reserved4: [0; 96],
+                    };
+
+                    unsafe {
+                        fs.float_registers.copy_from_slice(std::mem::transmute(fpregs._st));
+                        fs.xmm_registers.copy_from_slice(std::mem::transmute(fpregs._xmm));
+                    }
+
+                    cpu_ctx.float_save.copy_from_slice(crate::utils::to_byte_array(&fs));
+                } else {
+                    compile_error!("impelement me");
+                }
+            }
+        }
+
+        Some(cpu_ctx)
+    }
 }
 
 unsafe impl Send for CrashContext {}
@@ -427,15 +494,17 @@ impl HandlerInner {
 
         *crash_ctx = mem::MaybeUninit::zeroed();
         ptr::copy_nonoverlapping(nix_info, &mut (*(*crash_ctx).as_mut_ptr()).siginfo, 1);
-        ptr::copy_nonoverlapping(
-            (uc as *mut libc::c_void).cast::<libc::ucontext_t>(),
-            (&mut (*(*crash_ctx).as_mut_ptr()).context) as *mut libc::ucontext_t,
-            1,
-        );
+
+        let uc_ptr = &*(uc as *const libc::c_void).cast::<libc::ucontext_t>();
+        let mut uctx = mem::MaybeUninit::<libc::ucontext_t>::zeroed();
+        ptr::copy_nonoverlapping(uc_ptr, uctx.as_mut_ptr(), 1);
+
+        (*crash_ctx.as_mut_ptr()).context = Some(crate::linux::UContext {
+            inner: uctx.assume_init(),
+        });
 
         cfg_if::cfg_if! {
             if #[cfg(target_arch = "aarch64")] {
-                let uc_ptr = uc.as_ptr().cast::<libc::ucontext_t>();
                 let fp_ptr = uc_ptr.uc_mcontext.__reserved.cast::<libc::fpsimd_context>();
 
                 if fp_ptr.head.magic == libc::FPSIMD_MAGIC {
@@ -445,7 +514,6 @@ impl HandlerInner {
                 target_arch = "aarch",
                 target_arch = "mips",
                 target_arch = "mips64")))] {
-                let uc_ptr = &*(uc as *const libc::c_void).cast::<libc::ucontext_t>();
                 if !uc_ptr.uc_mcontext.fpregs.is_null() {
                     ptr::copy_nonoverlapping(uc_ptr.uc_mcontext.fpregs, &mut (*(*crash_ctx).as_mut_ptr()).float_state, 1);
 

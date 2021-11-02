@@ -42,7 +42,8 @@ pub struct MinidumpSettings {
 struct MinidumpWriter<'crash> {
     settings: MinidumpSettings,
     dumper: PTraceDumper,
-    context: &'crash CrashContext,
+    crash_context: &'crash CrashContext,
+    crashing_thread_context: Option<Location>,
     allocator: Allocator,
     memory_blocks: PageVec<MemoryDescriptor>,
 }
@@ -106,22 +107,9 @@ impl<'crash> MinidumpWriter<'crash> {
         Ok(())
     }
 
-    fn write_thread_list(&self, fw: &mut FileWriter<'_>) -> Result<Directory, WriterError> {
+    fn write_thread_list(&mut self, fw: &mut FileWriter<'_>) -> Result<Directory, WriterError> {
         let num_threads = self.dumper.threads.iter().filter(|t| t.is_some()).count();
 
-        // typedef struct {
-        //     uint32_t             thread_id;
-        //     uint32_t             suspend_count;
-        //     uint32_t             priority_class;
-        //     uint32_t             priority;
-        //     uint64_t             teb;             /* Thread environment block */
-        //     MDMemoryDescriptor   stack;
-        //     MDLocationDescriptor thread_context;  /* MDRawContext[CPU] */
-        //   } MDRawThread;  /* MINIDUMP_THREAD */
-        //   typedef struct {
-        //     uint32_t    number_of_threads;
-        //     MDRawThread threads[1];
-        //   } MDRawThreadList;  /* MINIDUMP_THREAD_LIST */
         let tlist = fw.reserve_header_array::<u32, Thread>(num_threads)?;
         tlist.write_header(num_threads as u32, fw)?;
 
@@ -169,18 +157,105 @@ impl<'crash> MinidumpWriter<'crash> {
             // If this is the crashing thread, we need to gather the thread
             // information from the crash context, as otherwise it will just
             // point to our signal handler
-            if thread_id == self.context.tid as u32 {
-            } else {
-                let tinfo = PTraceDumper::get_thread_info(thread_id)?;
+            let thread = match &self.crash_context.context {
+                Some(uctx)
+                    if thread_id == self.crash_context.tid as u32
+                        && !self.dumper.is_post_mortem() =>
+                {
+                    let thread_info = PTraceDumper::get_thread_info(thread_id)?;
 
-                let stack_size_limit = extra_thread_stack_len.and_then(|size| {
-                    if counter >= LIMIT_BASE_THREAD_COUNT {
-                        Some(size)
-                    } else {
-                        None
+                    // We never limit the stack size on the crashing thread since it is the most important one to keep
+                    // as much context as we can
+                    let mut md_thread =
+                        unsafe { self.fill_thread_stack(fw, thread_id, &thread_info, None)? };
+
+                    // Keep 256 bytes of context around the crashing IP
+                    const IP_MEM_SIZE: isize = 256;
+
+                    let ip = uctx.instruction_pointer();
+
+                    if let Some(mapping) = self.dumper.find_mapping_no_bias(ip) {
+                        let (ip_start, ip_size) = {
+                            let start = std::cmp::max(
+                                mapping.start_addr as isize,
+                                ip as isize - IP_MEM_SIZE / 2,
+                            ) as usize;
+
+                            (
+                                start,
+                                std::cmp::min(
+                                    (mapping.start_addr + mapping.size) as isize,
+                                    ip as isize + IP_MEM_SIZE / 2,
+                                ) as usize
+                                    - start,
+                            )
+                        };
+
+                        let mut ctx_copy = self.alloc_raw(ip_size)?;
+                        unsafe {
+                            let src = std::slice::from_raw_parts(ip_start as *const u8, ip_size);
+
+                            self.dumper.copy_from_process(
+                                thread_id as libc::pid_t,
+                                ctx_copy.as_mut(),
+                                src,
+                            );
+                        }
+
+                        let ip_memory = fw.reserve_raw(ip_size as u64)?;
+                        fw.write(ip_memory, 0, unsafe { ctx_copy.as_ref() })?;
+
+                        self.memory_blocks.push(MemoryDescriptor {
+                            start_of_memory_range: ip_start as u64,
+                            memory: ip_memory.into(),
+                        });
                     }
-                });
-            }
+
+                    let md_cpu_ctx = fw.reserve::<super::thread_info::RawContextCpu>()?;
+                    md_cpu_ctx.write(
+                        self.crash_context.get_cpu_context().expect(
+                            "this is infallible, I should make it that way in the type system",
+                        ),
+                        fw,
+                    )?;
+
+                    md_thread.thread_context = md_cpu_ctx.location();
+                    self.crashing_thread_context = Some(md_cpu_ctx.location());
+
+                    md_thread
+                }
+                _ => {
+                    let thread_info = PTraceDumper::get_thread_info(thread_id)?;
+
+                    let stack_size_limit =
+                        extra_thread_stack_len.filter(|_size| counter >= LIMIT_BASE_THREAD_COUNT);
+                    let mut md_thread = unsafe {
+                        self.fill_thread_stack(fw, thread_id, &thread_info, stack_size_limit)?
+                    };
+
+                    // If the thread stack data was actually filled out, add it to the memory blocks to emit at the end
+                    if md_thread.stack.memory.data_size > 0 {
+                        self.memory_blocks.push(md_thread.stack);
+                    }
+
+                    let md_cpu_ctx = fw.reserve::<super::thread_info::RawContextCpu>()?;
+                    md_cpu_ctx.write(thread_info.get_cpu_context(), fw)?;
+
+                    md_thread.thread_context = md_cpu_ctx.location();
+
+                    if thread_id == self.crash_context.tid as u32 {
+                        self.crashing_thread_context = Some(md_cpu_ctx.location());
+
+                        if !self.dumper.is_post_mortem() {
+                            self.dumper.set_crash_address(thread_info.get_ip());
+                        }
+                    }
+
+                    md_thread
+                }
+            };
+
+            tlist.write(counter, thread, &mut fw)?;
         }
 
         Ok(dir_ent)
@@ -245,62 +320,6 @@ impl<'crash> MinidumpWriter<'crash> {
         }
 
         Ok(thread)
-
-        // const void* stack;
-        // size_t stack_len;
-
-        // thread->stack.start_of_memory_range = stack_pointer;
-        // thread->stack.memory.data_size = 0;
-        // thread->stack.memory.rva = minidump_writer_.position();
-
-        // if (dumper_->GetStackInfo(&stack, &stack_len, stack_pointer)) {
-        // if (max_stack_len >= 0 &&
-        // stack_len > static_cast<unsigned int>(max_stack_len)) {
-        // stack_len = max_stack_len;
-        // // Skip empty chunks of length max_stack_len.
-        // uintptr_t int_stack = reinterpret_cast<uintptr_t>(stack);
-        // if (max_stack_len > 0) {
-        // while (int_stack + max_stack_len < stack_pointer) {
-        // int_stack += max_stack_len;
-        // }
-        // }
-        // stack = reinterpret_cast<const void*>(int_stack);
-        // }
-        // *stack_copy = reinterpret_cast<uint8_t*>(Alloc(stack_len));
-        // dumper_->CopyFromProcess(*stack_copy, thread->thread_id, stack,
-        //                 stack_len);
-
-        // uintptr_t stack_pointer_offset =
-        // stack_pointer - reinterpret_cast<uintptr_t>(stack);
-        // if (skip_stacks_if_mapping_unreferenced_) {
-        // if (!principal_mapping_) {
-        // return true;
-        // }
-        // uintptr_t low_addr = principal_mapping_->system_mapping_info.start_addr;
-        // uintptr_t high_addr = principal_mapping_->system_mapping_info.end_addr;
-        // if ((pc < low_addr || pc > high_addr) &&
-        // !dumper_->StackHasPointerToMapping(*stack_copy, stack_len,
-        //                                 stack_pointer_offset,
-        //                                 *principal_mapping_)) {
-        // return true;
-        // }
-        // }
-
-        // if (sanitize_stacks_) {
-        // dumper_->SanitizeStackCopy(*stack_copy, stack_len, stack_pointer,
-        //                     stack_pointer_offset);
-        // }
-
-        // UntypedMDRVA memory(&minidump_writer_);
-        // if (!memory.Allocate(stack_len))
-        // return false;
-        // memory.Copy(*stack_copy, stack_len);
-        // thread->stack.start_of_memory_range = reinterpret_cast<uintptr_t>(stack);
-        // thread->stack.memory = memory.location();
-        // memory_blocks_.push_back(thread->stack);
-        // }
-        // return true;
-        // }
     }
 
     #[inline]

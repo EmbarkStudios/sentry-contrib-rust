@@ -1,4 +1,4 @@
-use crate::minidump::Location;
+use crate::{minidump::Location, utils::to_byte_array};
 use std::{
     fs::File,
     io::{Seek, SeekFrom, Write},
@@ -120,11 +120,6 @@ impl<'file> FileWriter<'file> {
 }
 
 use std::marker::PhantomData as PD;
-
-#[inline]
-fn to_byte_array<T: Sized>(item: &T) -> &[u8] {
-    unsafe { std::slice::from_raw_parts((item as *const T).cast::<u8>(), std::mem::size_of::<T>()) }
-}
 
 pub struct MDItem<Kind: Sized> {
     reservation: Reservation,

@@ -207,24 +207,24 @@ pub enum Error {
     PtraceFailed,
 }
 #[cfg_attr(test, derive(PartialEq, Debug))]
-struct MappingInfo {
+pub struct MappingInfo {
     // On Android, relocation packing can mean that the reported start
     // address of the mapping must be adjusted by a bias in order to
     // compensate for the compression of the relocation section. The
     // following two members hold (after LateInit) the adjusted mapping
     // range. See crbug.com/606972 for more information.
-    start_addr: usize,
-    size: usize,
+    pub start_addr: usize,
+    pub size: usize,
     // When Android relocation packing causes |start_addr| and |size| to
     // be modified with a load bias, we need to remember the unbiased
     // address range. The following structure holds the original mapping
     // address range as reported by the operating system.
-    sys_start_addr: usize,
-    sys_end_addr: usize,
-    offset: usize,
+    pub sys_start_addr: usize,
+    pub sys_end_addr: usize,
+    pub offset: usize,
     /// true if the mapping has the execute bit set.
-    has_exec: bool,
-    name: utils::FixedStr<255>,
+    pub has_exec: bool,
+    pub name: utils::FixedStr<255>,
 }
 
 impl MappingInfo {
@@ -327,6 +327,14 @@ impl PTraceDumper {
         self.enumerate_mappings()?;
 
         Ok(())
+    }
+
+    pub fn is_post_mortem(&self) -> bool {
+        false
+    }
+
+    pub fn set_crash_address(&mut self, addr: usize) {
+        self.crash_address = addr;
     }
 
     fn read_auxv(&mut self) -> Result<(), Error> {
