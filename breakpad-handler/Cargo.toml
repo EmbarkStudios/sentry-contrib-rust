@@ -28,3 +28,12 @@ uuid = { version = "0.8", features = ["v4"] }
 [target.'cfg(any(target_os = "linux", target_os = "android"))'.dependencies]
 nix = "0.23"
 raw-cpuid = "10.2"
+
+# ELF parsing
+[dependencies.goblin]
+version = "0.4"
+default-features = false
+features = ["elf32", "elf64"]
+
+[dev-dependencies]
+synth-elf = { path = "../synth-elf" }
