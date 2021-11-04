@@ -1,0 +1,8 @@
+[package]
+name = "synth-elf"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+goblin = "0.4"
+test-assembler = "0.1"

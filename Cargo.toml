@@ -10,12 +10,7 @@ readme = "README.md"
 documentation = "https://docs.rs/sentry-contrib-breakpad"
 homepage = "https://github.com/EmbarkStudios/sentry-contrib-rust"
 keywords = ["breakpad", "sentry", "minidump", "crash"]
-exclude = [
-    ".github",
-    "release.toml",
-    "breakpad-handler",
-    "breakpad-sys",
-]
+exclude = [".github", "release.toml", "breakpad-handler", "breakpad-sys"]
 
 [features]
 default = []
@@ -29,7 +24,4 @@ sentry-core = { version = "0.23", features = ["client"] }
 serde_json = "1.0"
 
 [workspace]
-members = [
-    "breakpad-handler",
-    "breakpad-sys",
-]
+members = ["breakpad-handler", "breakpad-sys", "synth-elf"]
