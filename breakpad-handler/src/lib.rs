@@ -1,6 +1,10 @@
 mod error;
 pub use error::Error;
 
+// https://github.com/la10736/rstest/tree/master/rstest_reuse#cavelets
+#[cfg(test)]
+use rstest_reuse;
+
 #[cfg(unix)]
 mod alloc;
 mod minidump;

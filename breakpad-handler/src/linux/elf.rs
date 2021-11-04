@@ -27,7 +27,7 @@ pub struct ElfId {
 impl ElfId {
     fn new(slice: &[u8]) -> Option<Self> {
         (slice.len() <= MAX_ID_SIZE).then(|| {
-            let id = [0u8; MAX_ID_SIZE];
+            let mut id = [0u8; MAX_ID_SIZE];
 
             id[..slice.len()].copy_from_slice(slice);
 
@@ -54,6 +54,58 @@ impl ElfId {
         // Attempt to lookup the build-id embedded by the linker, but if no
         // build id is found, fallback to hashing the .text section
         read_build_id_note(header, elf).or_else(|| hash_text_section(header, elf))
+    }
+
+    /// Converts this identifier into a UUID string with all uppercases. If the
+    /// identifier is longer than a 16-byte UUID it will be truncated.
+    pub fn as_uuid_string(&self) -> String {
+        let mut uuid = [0u8; 16];
+
+        unsafe {
+            let to_copy = std::cmp::min(16, self.len);
+
+            let mut ind = 0;
+
+            if ind + 4 <= to_copy {
+                let mut part = [0u8; 4];
+                part[..4].copy_from_slice(&self.id[ind..ind + 4]);
+                part = u32::to_be_bytes(u32::from_ne_bytes(part));
+                uuid[ind..ind + 4].copy_from_slice(&part);
+                ind += 4;
+            }
+
+            if ind + 2 <= to_copy {
+                let mut part = [0u8; 2];
+                part[..2].copy_from_slice(&self.id[ind..ind + 2]);
+                part = u16::to_be_bytes(u16::from_ne_bytes(part));
+                uuid[ind..ind + 2].copy_from_slice(&part);
+                ind += 2;
+            }
+
+            if ind + 2 <= to_copy {
+                let mut part = [0u8; 2];
+                part[..2].copy_from_slice(&self.id[ind..ind + 2]);
+                part = u16::to_be_bytes(u16::from_ne_bytes(part));
+                uuid[ind..ind + 2].copy_from_slice(&part);
+                ind += 2;
+            }
+
+            uuid[ind..to_copy].copy_from_slice(&self.id[ind..to_copy]);
+        }
+
+        Self::to_hex_string(&uuid)
+    }
+
+    pub fn to_hex_string(bytes: &[u8]) -> String {
+        const CHARS: &[u8] = b"0123456789ABCDEF";
+        let mut output = String::with_capacity(bytes.len() * 2);
+
+        for &byte in bytes {
+            output.push(CHARS[(byte >> 4) as usize] as char);
+            output.push(CHARS[(byte & 0xf) as usize] as char);
+        }
+
+        output
     }
 }
 
@@ -84,7 +136,7 @@ fn build_id_from_note(note_section: &[u8]) -> Option<ElfId> {
             let offset = &mut 0;
 
             // Note strings are always 32-bit word aligned
-            let mut align = || {
+            let align = |offset: &mut usize| {
                 let diff = *offset % 4;
                 if diff != 0 {
                     *offset += 4 - diff;
@@ -101,10 +153,10 @@ fn build_id_from_note(note_section: &[u8]) -> Option<ElfId> {
 
             // Just skip the name, we don't care
             *offset += name_size as usize;
-            align();
+            align(offset);
 
             let description = this.gread_with::<&'buffer [u8]>(offset, desc_size as usize)?;
-            align();
+            align(offset);
 
             Ok((Self { kind, description }, *offset))
         }
@@ -169,7 +221,7 @@ fn iter_segments<'buffer>(
     let program_headers: &[ProgramHeader] = unsafe {
         std::mem::transmute(
             &elf[header.e_phoff as usize
-                ..header.e_shoff as usize
+                ..header.e_phoff as usize
                     + std::mem::size_of::<ProgramHeader>() * header.e_phnum as usize],
         )
     };
@@ -208,7 +260,7 @@ fn hash_text_section(header: &Header, elf: &[u8]) -> Option<ElfId> {
     // Breakpad limits this to 16-bytes (GUID-ish) size for backwards compat, so
     // we do the same, not that this method should really ever be used in practice
     // since stripping out build ids is not a good idea
-    let identifier = [0u8; 16];
+    let mut identifier = [0u8; 16];
 
     // Breakpad hard codes the page size 4k, so just do the same, again for
     // backwards compat
@@ -223,4 +275,40 @@ fn hash_text_section(header: &Header, elf: &[u8]) -> Option<ElfId> {
     }
 
     ElfId::new(&identifier)
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use goblin::elf;
+    use rstest::{self, *};
+    use rstest_reuse::{self, *};
+    use synth_elf::{ElfClass, Endian, Section};
+
+    // breakpad also has a "strip self" test where it literally strips the running
+    // test executable by shelling out to strip which is....yah. Can add that
+    // on later but using a built-in strip via goblin or something. Or just not.
+
+    #[template]
+    #[rstest]
+    //#[case(ElfClass::Class32)]
+    #[case(ElfClass::Class64)]
+    fn classes(#[case] class: ElfClass) {}
+
+    #[apply(classes)]
+    fn elf_class(#[case] class: ElfClass) {
+        let mut elf = synth_elf::Elf::new(elf::header::EM_386, class, Endian::Little);
+        let mut text_section = Section::with_endian(Endian::Little);
+
+        for i in 0..128u16 {
+            text_section.D8((i * 3) as u8);
+        }
+
+        elf.add_section(".text", text_section, elf::section_header::SHT_PROGBITS);
+        let elf_data = elf.finish().unwrap();
+
+        let id = ElfId::from_mapped_file(&elf_data).unwrap();
+
+        assert_eq!(id.as_uuid_string(), "80808080808000000000008080808080");
+    }
 }

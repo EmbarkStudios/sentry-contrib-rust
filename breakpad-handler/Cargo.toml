@@ -36,4 +36,6 @@ default-features = false
 features = ["elf32", "elf64"]
 
 [dev-dependencies]
+rstest = "0.11"
+rstest_reuse = "0.1"
 synth-elf = { path = "../synth-elf" }
