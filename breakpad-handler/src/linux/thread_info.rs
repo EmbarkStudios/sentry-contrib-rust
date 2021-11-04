@@ -268,8 +268,9 @@ impl ThreadInfo {
                 };
 
                 unsafe {
-                    fs.float_registers.copy_from_slice(std::mem::transmute(self.fp_regs.st_space));
-                    fs.xmm_registers.copy_from_slice(std::mem::transmute(self.fp_regs.xmm_space));
+                    unimplemented!()
+                    // fs.float_registers.copy_from_slice(std::mem::transmute(self.fp_regs.st_space));
+                    // fs.xmm_registers.copy_from_slice(std::mem::transmute(self.fp_regs.xmm_space));
                 }
 
                 let mut cpu_ctx = RawContextCpu {

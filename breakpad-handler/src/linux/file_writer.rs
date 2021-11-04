@@ -133,7 +133,7 @@ impl<Kind> MDItem<Kind> {
     }
 
     #[inline]
-    pub fn write(self, item: Kind, fw: &mut FileWriter<'_>) -> Result<(), std::io::Error> {
+    pub fn write(&self, item: Kind, fw: &mut FileWriter<'_>) -> Result<(), std::io::Error> {
         fw.write(self.reservation, 0, to_byte_array(&item))
     }
 }

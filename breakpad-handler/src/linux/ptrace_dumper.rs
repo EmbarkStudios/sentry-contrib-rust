@@ -8,6 +8,8 @@ use std::{
     mem,
 };
 
+use super::ElfId;
+
 // When we find the VDSO mapping in the process's address space, this
 // is the name we use for it when writing it to the minidump.
 // This should always be less than NAME_MAX!
@@ -489,12 +491,12 @@ impl PTraceDumper {
             .find(|mapping| mapping.contains_address(address))
     }
 
-    pub fn suspend_threads(&mut self) -> Result<(), Error> {
+    pub unsafe fn suspend_threads(&mut self) -> Result<(), Error> {
         if self.threads_suspended {
             return Ok(());
         }
 
-        fn suspend_thread(tid: u32) -> bool {
+        unsafe fn suspend_thread(tid: u32) -> bool {
             use std::ptr;
 
             // This may fail if the thread has just died or debugged.
@@ -771,96 +773,98 @@ impl PTraceDumper {
 
         // Apply sanitization to each complete pointer-aligned word in the stack.
         unsafe {
-            let mut sp: *mut usize = stack.as_mut_ptr().offset(zero_offset as isize).cast();
-            let end: *mut usize = stack
-                .as_mut_ptr()
-                .offset((stack.len() - std::mem::size_of::<usize>()) as isize)
-                .cast();
+            unimplemented!()
+            // let mut sp: *mut usize = stack.as_mut_ptr().offset(zero_offset as isize).cast();
+            // let end: *mut usize = stack
+            //     .as_mut_ptr()
+            //     .offset((stack.len() - std::mem::size_of::<usize>()) as isize)
+            //     .cast();
 
-            while sp <= end {
-                let addr = sp.read();
+            // while sp <= end {
+            //     let addr = sp.read();
 
-                if addr as isize <= SMALL_INT_MAGNITUDE && addr as isize >= -SMALL_INT_MAGNITUDE {
-                    continue;
-                }
+            //     if addr as isize <= SMALL_INT_MAGNITUDE && addr as isize >= -SMALL_INT_MAGNITUDE {
+            //         continue;
+            //     }
 
-                if let Some(sm) = stack_mapping {
-                    if sm.contains_address(addr) {
-                        continue;
-                    }
-                }
+            //     if let Some(sm) = stack_mapping {
+            //         if sm.contains_address(addr) {
+            //             continue;
+            //         }
+            //     }
 
-                if let Some(sm) = last_hit_mapping {
-                    if sm.contains_address(addr) {
-                        continue;
-                    }
-                }
+            //     if let Some(sm) = last_hit_mapping {
+            //         if sm.contains_address(addr) {
+            //             continue;
+            //         }
+            //     }
 
-                let test = addr >> SHIFT;
+            //     let test = addr >> SHIFT;
 
-                if could_hit_mapping[(test >> 3) & ARRAY_MASK] & (1 << (test & 7)) != 0 {
-                    if let Some(mapping) = self
-                        .find_mapping_no_bias(addr)
-                        .filter(|mapping| mapping.has_exec)
-                    {
-                        last_hit_mapping = Some(mapping);
-                        continue;
-                    }
-                }
+            //     if could_hit_mapping[(test >> 3) & ARRAY_MASK] & (1 << (test & 7)) != 0 {
+            //         if let Some(mapping) = self
+            //             .find_mapping_no_bias(addr)
+            //             .filter(|mapping| mapping.has_exec)
+            //         {
+            //             last_hit_mapping = Some(mapping);
+            //             continue;
+            //         }
+            //     }
 
-                sp.write(SENTINEL);
-                sp = sp.offset(1);
-            }
+            //     sp.write(SENTINEL);
+            //     sp = sp.offset(1);
+            // }
 
-            let partial = stack.len() % std::mem::size_of::<usize>();
-            if partial > 0 {
-                stack[stack.len() - partial..].fill(0);
-            }
+            // let partial = stack.len() % std::mem::size_of::<usize>();
+            // if partial > 0 {
+            //     stack[stack.len() - partial..].fill(0);
+            // }
         }
     }
 
-    pub fn elf_identifier_for_mapping(&self, mapping: &MappingInfo) -> Option<> {
+    pub fn elf_identifier_for_mapping(&self, mapping: &MappingInfo) -> Option<ElfId> {
         if !can_open_mapped_file(mapping) {
             return None;
         }
 
+        unimplemented!()
+
         // Special-case linux-gate because it's not a real file.
-        if mapping.name.as_ref() == LINUX_GATE_LIBRARY_NAME {
-            // If we're the crashing process we just use the mapping directly
-            if self.pid == std::process::id() {
-                
-            }
-        }
-  if (my_strcmp(mapping.name, kLinuxGateLibraryName) == 0) {
-    void* linux_gate = NULL;
-    if (pid_ == sys_getpid()) {
-      linux_gate = reinterpret_cast<void*>(mapping.start_addr);
-    } else {
-      linux_gate = allocator_.Alloc(mapping.size);
-      CopyFromProcess(linux_gate, pid_,
-                      reinterpret_cast<const void*>(mapping.start_addr),
-                      mapping.size);
-    }
-    return FileID::ElfFileIdentifierFromMappedFile(linux_gate, identifier);
-  }
+        // if mapping.name.as_ref() == LINUX_GATE_LIBRARY_NAME {
+        //     // If we're the crashing process we just use the mapping directly
+        //     if self.pid == std::process::id() {}
+        // }
 
-  char filename[PATH_MAX];
-  if (!GetMappingAbsolutePath(mapping, filename))
-    return false;
-  bool filename_modified = HandleDeletedFileInMapping(filename);
+        //   if (my_strcmp(mapping.name, kLinuxGateLibraryName) == 0) {
+        //     void* linux_gate = NULL;
+        //     if (pid_ == sys_getpid()) {
+        //       linux_gate = reinterpret_cast<void*>(mapping.start_addr);
+        //     } else {
+        //       linux_gate = allocator_.Alloc(mapping.size);
+        //       CopyFromProcess(linux_gate, pid_,
+        //                       reinterpret_cast<const void*>(mapping.start_addr),
+        //                       mapping.size);
+        //     }
+        //     return FileID::ElfFileIdentifierFromMappedFile(linux_gate, identifier);
+        //   }
 
-  MemoryMappedFile mapped_file(filename, mapping.offset);
-  if (!mapped_file.data() || mapped_file.size() < SELFMAG)
-    return false;
+        //   char filename[PATH_MAX];
+        //   if (!GetMappingAbsolutePath(mapping, filename))
+        //     return false;
+        //   bool filename_modified = HandleDeletedFileInMapping(filename);
 
-  bool success =
-      FileID::ElfFileIdentifierFromMappedFile(mapped_file.data(), identifier);
-  if (success && member && filename_modified) {
-    mappings_[mapping_id]->name[my_strlen(mapping.name) -
-                                sizeof(kDeletedSuffix) + 1] = '\0';
-  }
+        //   MemoryMappedFile mapped_file(filename, mapping.offset);
+        //   if (!mapped_file.data() || mapped_file.size() < SELFMAG)
+        //     return false;
 
-  return success;
+        //   bool success =
+        //       FileID::ElfFileIdentifierFromMappedFile(mapped_file.data(), identifier);
+        //   if (success && member && filename_modified) {
+        //     mappings_[mapping_id]->name[my_strlen(mapping.name) -
+        //                                 sizeof(kDeletedSuffix) + 1] = '\0';
+        //   }
+
+        //   return success;
     }
 }
 

@@ -336,7 +336,7 @@ pub(crate) struct CrashContext {
 
 impl CrashContext {
     pub(crate) fn get_cpu_context(&self) -> Option<super::thread_info::RawContextCpu> {
-        let mut cpu_ctx = self.context.map(|uc| uc.get_cpu_context())?;
+        let mut cpu_ctx = self.context.as_ref().map(|uc| uc.get_cpu_context())?;
 
         #[cfg(not(all(target_arch = "aarch", target_arch = "mips", target_arch = "mips64")))]
         {
@@ -386,8 +386,9 @@ impl CrashContext {
                     };
 
                     unsafe {
-                        fs.float_registers.copy_from_slice(std::mem::transmute(fpregs._st));
-                        fs.xmm_registers.copy_from_slice(std::mem::transmute(fpregs._xmm));
+                        unimplemented!()
+                        // fs.float_registers.copy_from_slice(std::mem::transmute(fpregs._st));
+                        // fs.xmm_registers.copy_from_slice(std::mem::transmute(fpregs._xmm));
                     }
 
                     cpu_ctx.float_save.copy_from_slice(crate::utils::to_byte_array(&fs));

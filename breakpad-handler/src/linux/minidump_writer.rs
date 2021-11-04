@@ -56,7 +56,7 @@ struct MinidumpWriter<'crash> {
 impl<'crash> MinidumpWriter<'crash> {
     fn init(&mut self) -> Result<(), WriterError> {
         self.dumper.init()?;
-        self.dumper.suspend_threads()?;
+        unsafe { self.dumper.suspend_threads()? };
         self.dumper.late_init()?;
 
         if self.settings.skip_stacks_if_mapping_is_unreferenced {
@@ -72,7 +72,7 @@ impl<'crash> MinidumpWriter<'crash> {
         Ok(())
     }
 
-    fn dump(self, file: &mut std::fs::File) -> Result<(), WriterError> {
+    fn dump(mut self, file: &mut std::fs::File) -> Result<(), WriterError> {
         // A minidump file contains a number of tagged streams. This is the
         // number of stream which we write.
         const NUM_STREAMS: u32 = 13;
@@ -255,7 +255,7 @@ impl<'crash> MinidumpWriter<'crash> {
                         self.crashing_thread_context = Some(md_cpu_ctx.location());
 
                         if !self.dumper.is_post_mortem() {
-                            self.dumper.set_crash_address(thread_info.get_ip());
+                            //self.dumper.set_crash_address(thread_info.get_ip());
                         }
                     }
 
@@ -263,7 +263,7 @@ impl<'crash> MinidumpWriter<'crash> {
                 }
             };
 
-            tlist.write(counter, thread, &mut fw)?;
+            tlist.write(counter, thread, fw)?;
         }
 
         Ok(dir_ent)
@@ -331,51 +331,52 @@ impl<'crash> MinidumpWriter<'crash> {
     }
 
     fn write_mappings(&self, fw: &mut FileWriter<'_>) -> Result<Directory, WriterError> {
-        let should_include = |mapping: &MappingInfo| {
-            // we only want modules with filenames
-            !mapping.name.as_ref().is_empty() &&
-            // We only want one mapping per shared lib
-            mapping.offset == 0 &&
-            // The mapping should be executable
-            mapping.has_exec &&
-            // Ensure it's a minimum size that we can actually get signatures for it
-            mapping.size >= 4 * 1024
-        };
+        unimplemented!()
+        // let should_include = |mapping: &MappingInfo| {
+        //     // we only want modules with filenames
+        //     !mapping.name.as_ref().is_empty() &&
+        //     // We only want one mapping per shared lib
+        //     mapping.offset == 0 &&
+        //     // The mapping should be executable
+        //     mapping.has_exec &&
+        //     // Ensure it's a minimum size that we can actually get signatures for it
+        //     mapping.size >= 4 * 1024
+        // };
 
-        // Ignore mappings that are wholly contained within a mapping supplied
-        // by the user
-        let overlaps = |mapping: &MappingInfo| {
-            self.user_mappings.iter().any(|um| {
-                mapping.start_addr >= um.start_addr
-                    && mapping.start_addr + mapping.size <= um.start_addr + um.size
-            })
-        };
+        // // Ignore mappings that are wholly contained within a mapping supplied
+        // // by the user
+        // let overlaps = |mapping: &MappingInfo| {
+        //     self.user_mappings.iter().any(|um| {
+        //         mapping.start_addr >= um.start_addr
+        //             && mapping.start_addr + mapping.size <= um.start_addr + um.size
+        //     })
+        // };
 
-        let num_mappings = self.user_mappings.len()
-            + self
-                .dumper
-                .mappings
-                .iter()
-                .filter(|mapping| should_include(mapping) && !overlaps(mapping))
-                .count();
+        // let num_mappings = self.user_mappings.len()
+        //     + self
+        //         .dumper
+        //         .mappings
+        //         .iter()
+        //         .filter(|mapping| should_include(mapping) && !overlaps(mapping))
+        //         .count();
 
-        let md_module_list = fw.reserve_header_array::<u32, Module>(num_mappings)?;
+        // let md_module_list = fw.reserve_header_array::<u32, Module>(num_mappings)?;
 
-        let dir_ent = Directory {
-            stream_type: StreamType::ModuleListStream as u32,
-            location: md_module_list.location(),
-        };
+        // let dir_ent = Directory {
+        //     stream_type: StreamType::ModuleListStream as u32,
+        //     location: md_module_list.location(),
+        // };
 
-        for (i, mapping) in self
-            .dumper
-            .mappings
-            .iter()
-            .filter(|mapping| should_include(mapping) && !overlaps(mapping))
-            .chain(self.user_mappings.iter())
-            .enumerate()
-        {}
+        // for (i, mapping) in self
+        //     .dumper
+        //     .mappings
+        //     .iter()
+        //     .filter(|mapping| should_include(mapping) && !overlaps(mapping))
+        //     .chain(self.user_mappings.iter())
+        //     .enumerate()
+        // {}
 
-        Ok(md_module_list)
+        // Ok(md_module_list)
     }
 
     fn fill_module(
@@ -383,6 +384,7 @@ impl<'crash> MinidumpWriter<'crash> {
         mapping: &MappingInfo,
         identifier: Option<&[u8]>,
     ) -> Result<Module, WriterError> {
+        unimplemented!()
     }
 
     #[inline]
@@ -405,27 +407,28 @@ pub(crate) fn write_minidump(
     pid: libc::pid_t,
     context: &CrashContext,
 ) -> Result<(), WriterError> {
-    let pid = if pid <= 0 {
-        return Err(Error::InvalidArgs);
-    } else {
-        std::num::NonZeroU32::new(pid as u32).unwrap()
-    };
+    unimplemented!()
+    // let pid = if pid <= 0 {
+    //     return Err(Error::InvalidArgs);
+    // } else {
+    //     std::num::NonZeroU32::new(pid as u32).unwrap()
+    // };
 
-    let allocator = Allocator::new();
+    // let allocator = Allocator::new();
 
-    let ptd = PTraceDumper::new(allocator.clone(), pid, context);
+    // let ptd = PTraceDumper::new(allocator.clone(), pid, context);
 
-    let mut mdw = MinidumpWriter {
-        settings: MinidumpSettings {
-            skip_stacks_if_mapping_is_unreferenced: false,
-        },
-        dumper: ptd,
-        context,
-        memory_blocks: PageVec::new_in(allocator.clone()),
-        allocator,
-    };
+    // let mut mdw = MinidumpWriter {
+    //     settings: MinidumpSettings {
+    //         skip_stacks_if_mapping_is_unreferenced: false,
+    //     },
+    //     dumper: ptd,
+    //     context,
+    //     memory_blocks: PageVec::new_in(allocator.clone()),
+    //     allocator,
+    // };
 
-    mdw.init()?;
+    // mdw.init()?;
 
     //     LinuxPtraceDumper dumper(crashing_process);
     //   const ExceptionHandler::CrashContext* context = NULL;

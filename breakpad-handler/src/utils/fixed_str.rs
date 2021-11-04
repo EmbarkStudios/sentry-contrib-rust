@@ -93,13 +93,14 @@ impl<const N: usize> FixedCStr<N> {
             let slice = std::slice::from_raw_parts(ptr.cast::<u8>(), str_len);
 
             let mut inner = FixedStr::new();
-            &inner.bytes[..str_len].copy_from_slice(slice);
+            inner.bytes[..str_len].copy_from_slice(slice);
             inner.ind = str_len;
 
             Some(Self { inner })
         }
     }
 
+    #[inline]
     pub fn clear(&mut self) {
         self.inner.clear();
     }
