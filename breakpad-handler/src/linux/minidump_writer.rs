@@ -1,4 +1,7 @@
-use super::{file_writer::FileWriter, ptrace_dumper::PTraceDumper};
+use super::{
+    file_writer::FileWriter,
+    ptrace_dumper::{MappingInfo, PTraceDumper},
+};
 use crate::{
     alloc::{Allocator, PageVec},
     linux::handler::CrashContext,
@@ -46,6 +49,8 @@ struct MinidumpWriter<'crash> {
     crashing_thread_context: Option<Location>,
     allocator: Allocator,
     memory_blocks: PageVec<MemoryDescriptor>,
+    /// Mappings that have been supplied by the user
+    user_mappings: Vec<MappingInfo>,
 }
 
 impl<'crash> MinidumpWriter<'crash> {
@@ -102,6 +107,9 @@ impl<'crash> MinidumpWriter<'crash> {
         let mut dir_index = 0;
 
         dir.write(dir_index, self.write_thread_list(&mut fw)?, &mut fw)?;
+        dir_index += 1;
+
+        dir.write(dir_index, self.write_mappings(&mut fw)?, &mut fw)?;
         dir_index += 1;
 
         Ok(())
@@ -320,6 +328,61 @@ impl<'crash> MinidumpWriter<'crash> {
         }
 
         Ok(thread)
+    }
+
+    fn write_mappings(&self, fw: &mut FileWriter<'_>) -> Result<Directory, WriterError> {
+        let should_include = |mapping: &MappingInfo| {
+            // we only want modules with filenames
+            !mapping.name.as_ref().is_empty() &&
+            // We only want one mapping per shared lib
+            mapping.offset == 0 &&
+            // The mapping should be executable
+            mapping.has_exec &&
+            // Ensure it's a minimum size that we can actually get signatures for it
+            mapping.size >= 4 * 1024
+        };
+
+        // Ignore mappings that are wholly contained within a mapping supplied
+        // by the user
+        let overlaps = |mapping: &MappingInfo| {
+            self.user_mappings.iter().any(|um| {
+                mapping.start_addr >= um.start_addr
+                    && mapping.start_addr + mapping.size <= um.start_addr + um.size
+            })
+        };
+
+        let num_mappings = self.user_mappings.len()
+            + self
+                .dumper
+                .mappings
+                .iter()
+                .filter(|mapping| should_include(mapping) && !overlaps(mapping))
+                .count();
+
+        let md_module_list = fw.reserve_header_array::<u32, Module>(num_mappings)?;
+
+        let dir_ent = Directory {
+            stream_type: StreamType::ModuleListStream as u32,
+            location: md_module_list.location(),
+        };
+
+        for (i, mapping) in self
+            .dumper
+            .mappings
+            .iter()
+            .filter(|mapping| should_include(mapping) && !overlaps(mapping))
+            .chain(self.user_mappings.iter())
+            .enumerate()
+        {}
+
+        Ok(md_module_list)
+    }
+
+    fn fill_module(
+        &self,
+        mapping: &MappingInfo,
+        identifier: Option<&[u8]>,
+    ) -> Result<Module, WriterError> {
     }
 
     #[inline]

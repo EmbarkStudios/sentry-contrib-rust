@@ -818,6 +818,59 @@ impl PTraceDumper {
             }
         }
     }
+
+    pub fn elf_identifier_for_mapping(&self, mapping: &MappingInfo) -> Option<> {
+        if !can_open_mapped_file(mapping) {
+            return None;
+        }
+
+        // Special-case linux-gate because it's not a real file.
+        if mapping.name.as_ref() == LINUX_GATE_LIBRARY_NAME {
+            // If we're the crashing process we just use the mapping directly
+            if self.pid == std::process::id() {
+                
+            }
+        }
+  if (my_strcmp(mapping.name, kLinuxGateLibraryName) == 0) {
+    void* linux_gate = NULL;
+    if (pid_ == sys_getpid()) {
+      linux_gate = reinterpret_cast<void*>(mapping.start_addr);
+    } else {
+      linux_gate = allocator_.Alloc(mapping.size);
+      CopyFromProcess(linux_gate, pid_,
+                      reinterpret_cast<const void*>(mapping.start_addr),
+                      mapping.size);
+    }
+    return FileID::ElfFileIdentifierFromMappedFile(linux_gate, identifier);
+  }
+
+  char filename[PATH_MAX];
+  if (!GetMappingAbsolutePath(mapping, filename))
+    return false;
+  bool filename_modified = HandleDeletedFileInMapping(filename);
+
+  MemoryMappedFile mapped_file(filename, mapping.offset);
+  if (!mapped_file.data() || mapped_file.size() < SELFMAG)
+    return false;
+
+  bool success =
+      FileID::ElfFileIdentifierFromMappedFile(mapped_file.data(), identifier);
+  if (success && member && filename_modified) {
+    mappings_[mapping_id]->name[my_strlen(mapping.name) -
+                                sizeof(kDeletedSuffix) + 1] = '\0';
+  }
+
+  return success;
+    }
+}
+
+/// It is unsafe to attempt to open a mapped file that lives under /dev, because
+/// the semantics of the open may be driver-specific so we'd risk hanging the
+/// crash dumper. And a file in /dev/ almost certainly has no ELF file
+/// identifier anyways.
+#[inline]
+fn can_open_mapped_file(mapping: &MappingInfo) -> bool {
+    !mapping.name.as_ref().starts_with("/dev/")
 }
 
 #[cfg(test)]
