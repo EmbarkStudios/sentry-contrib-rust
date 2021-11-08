@@ -4,47 +4,7 @@
 //! such as [goblin](https://github.com/m4b/goblin/issues/185)
 
 use goblin::elf::{self, header};
-pub use test_assembler::{Endian, Label, LabelMaker, Section};
-
-pub struct StringTable {
-    section: Section,
-    strings: std::collections::HashMap<String, Label>,
-}
-
-impl Default for StringTable {
-    fn default() -> Self {
-        Self::with_endian(test_assembler::DEFAULT_ENDIAN)
-    }
-}
-
-impl StringTable {
-    pub fn with_endian(endian: Endian) -> Self {
-        let mut this = Self {
-            section: Section::with_endian(endian),
-            strings: std::collections::HashMap::new(),
-        };
-
-        this.section.set_start_const(0);
-        this.add("");
-        this
-    }
-
-    pub fn add(&mut self, string: impl Into<String>) -> Label {
-        let string = string.into();
-        if let Some(label) = self.strings.get(&string) {
-            return label.clone();
-        }
-
-        let here = self.section.here();
-        self.section
-            .append_bytes(string.as_bytes())
-            // null terminator
-            .append_bytes(&[0]);
-
-        self.strings.insert(string, here.clone());
-        here
-    }
-}
+pub use test_assembler::{self, Endian, Label, LabelMaker, Section};
 
 pub struct ElfSection {
     inner: Section,
@@ -102,12 +62,12 @@ impl ElfClass {
     }
 }
 
-trait NumCast: test_assembler::Num {
+pub trait Word: test_assembler::Num {
     fn to_u32(self) -> u32;
     fn to_u64(self) -> u64;
 }
 
-impl NumCast for u32 {
+impl Word for u32 {
     fn to_u32(self) -> u32 {
         self
     }
@@ -116,7 +76,7 @@ impl NumCast for u32 {
     }
 }
 
-impl NumCast for u64 {
+impl Word for u64 {
     fn to_u32(self) -> u32 {
         self as u32
     }
@@ -126,12 +86,12 @@ impl NumCast for u64 {
 }
 
 trait WithSize {
-    fn append_word(&mut self, is_64_bits: bool, num: impl NumCast) -> &mut Self;
+    fn append_word(&mut self, is_64_bits: bool, num: impl Word) -> &mut Self;
     fn append_word_label(&mut self, is_64_bits: bool, label: &Label) -> &mut Self;
 }
 
 impl WithSize for Section {
-    fn append_word(&mut self, is_64_bits: bool, num: impl NumCast) -> &mut Section {
+    fn append_word(&mut self, is_64_bits: bool, num: impl Word) -> &mut Section {
         if is_64_bits {
             self.D64(num.to_u64())
         } else {
@@ -195,7 +155,7 @@ impl Elf {
             // ei_pad
             .append_repeated(0, 7);
 
-        debug_assert_eq!(section.size() as usize, header::SIZEOF_IDENT);
+        assert_eq!(section.size() as usize, header::SIZEOF_IDENT);
 
         let program_header_label = Label::new();
         let section_header_label = Label::new();
@@ -233,6 +193,8 @@ impl Elf {
             // e_shstrndx
             .D16(&section_header_string_index);
 
+        assert_eq!(section.size() as usize, file_class.ehsize() as usize);
+
         let mut this = Self {
             section,
             addr_size: file_class.addr_size(),
@@ -255,7 +217,12 @@ impl Elf {
 
     /// Add the section to the section header table and append it to the file.
     /// Returns the index of the section in the section header table.
-    pub fn add_section(&mut self, name: impl Into<String>, section: Section, kind: u32) -> usize {
+    pub fn add_section(
+        &mut self,
+        name: impl Into<String>,
+        section: impl Into<Section>,
+        kind: u32,
+    ) -> usize {
         self.add_section_with_attrs(name, section, kind, SectionAttrs::default())
     }
 
@@ -265,18 +232,17 @@ impl Elf {
     pub fn add_section_with_attrs(
         &mut self,
         name: impl Into<String>,
-        section: Section,
+        section: impl Into<Section>,
         kind: u32,
         attrs: SectionAttrs,
     ) -> usize {
         let string_label = self.section_header_strings.add(name);
-        let size = section.size();
+        let section = section.into();
         let is_64_bits = self.addr_size == 8;
 
         let elf_section = Self::do_add_section(
             &mut self.section_headers,
             string_label,
-            size,
             is_64_bits,
             section,
             kind,
@@ -290,13 +256,13 @@ impl Elf {
     fn do_add_section(
         section_headers: &mut Section,
         string_label: Label,
-        size: u64,
         is_64_bits: bool,
         section: Section,
         kind: u32,
         attrs: SectionAttrs,
     ) -> ElfSection {
         let offset_label = Label::new();
+        let size = section.size();
 
         section_headers
             // sh_name
@@ -347,10 +313,10 @@ impl Elf {
         let mut file_size = 0;
         let mut mem_size = 0;
         let mut prev_was_nobits = false;
-        for section in &self.sections[start..end] {
+        for section in &self.sections[start..=end] {
             let mut size = section.size as u64;
             if section.kind != elf::section_header::SHT_NOBITS {
-                debug_assert!(!prev_was_nobits);
+                assert!(!prev_was_nobits);
                 size = (size + 3) & !3;
                 file_size += size;
             } else {
@@ -390,13 +356,11 @@ impl Elf {
 
         {
             let string_label = self.section_header_strings.add(".shstrtab");
-            let size = self.section.size();
             let is_64_bits = self.addr_size == 8;
 
             let elf_section = Self::do_add_section(
                 &mut self.section_headers,
                 string_label,
-                size,
                 is_64_bits,
                 self.section_header_strings.section,
                 elf::section_header::SHT_STRTAB,
@@ -438,5 +402,177 @@ impl Elf {
             .append_section(self.section_headers);
 
         self.section.get_contents()
+    }
+}
+
+pub struct StringTable {
+    section: Section,
+    strings: std::collections::HashMap<String, Label>,
+}
+
+impl StringTable {
+    pub fn with_endian(endian: Endian) -> Self {
+        let mut this = Self {
+            section: Section::with_endian(endian),
+            strings: std::collections::HashMap::new(),
+        };
+
+        this.section.set_start_const(0);
+        // String tables always contain an empty string at the beginning
+        this.add("");
+        this
+    }
+
+    pub fn add(&mut self, string: impl Into<String>) -> Label {
+        let string = string.into();
+        if let Some(label) = self.strings.get(&string) {
+            return label.clone();
+        }
+
+        let here = self.section.here();
+        self.section
+            .append_bytes(string.as_bytes())
+            // null terminator
+            .append_bytes(&[0]);
+
+        self.strings.insert(string, here.clone());
+        here
+    }
+
+    #[inline]
+    pub fn finish(self) -> Option<Vec<u8>> {
+        self.section.get_contents()
+    }
+}
+
+impl Default for StringTable {
+    fn default() -> Self {
+        Self::with_endian(test_assembler::DEFAULT_ENDIAN)
+    }
+}
+
+impl Into<Section> for StringTable {
+    fn into(self) -> Section {
+        self.section
+    }
+}
+
+pub struct Notes {
+    section: Section,
+}
+
+impl Notes {
+    pub fn with_endian(endian: Endian) -> Self {
+        Self {
+            section: Section::with_endian(endian),
+        }
+    }
+
+    pub fn add_note(&mut self, kind: u32, name: impl AsRef<str>, description: &[u8]) -> &mut Self {
+        let name = name.as_ref();
+        // Elf32_Nhdr and Elf64_Nhdr are exactly the same.
+        self.section
+            // n_namesz (including null terminator)
+            .D32((name.len() + 1) as u32)
+            // n_descsz
+            .D32(description.len() as u32)
+            // n_type
+            .D32(kind)
+            .append_bytes(name.as_bytes())
+            .D8(0)
+            .align(4)
+            .append_bytes(description)
+            .align(4);
+
+        self
+    }
+
+    pub fn finish(self) -> Option<Vec<u8>> {
+        self.section.get_contents()
+    }
+}
+
+impl Into<Section> for Notes {
+    fn into(self) -> Section {
+        self.section
+    }
+}
+
+pub struct SymbolTable<T> {
+    section: Section,
+    is_64_bits: bool,
+    _marker: std::marker::PhantomData<T>,
+}
+
+impl<T: Word + Sized> SymbolTable<T> {
+    pub fn with_endian(endian: Endian) -> Self {
+        Self {
+            section: Section::with_endian(endian),
+            is_64_bits: match std::mem::size_of::<T>() {
+                4 => false,
+                8 => true,
+                other => panic!("Invalid word kind with size {}", other),
+            },
+            _marker: std::marker::PhantomData,
+        }
+    }
+
+    pub fn add_symbol(
+        &mut self,
+        st: &mut StringTable,
+        name: impl Into<String>,
+        value: T,
+        size: T,
+        info: impl Into<u8>,
+        sh_index: u16,
+    ) -> &mut Self {
+        self.section.D32(st.add(name));
+
+        if self.is_64_bits {
+            self.section
+                .D8(info.into())
+                .D8(0) // other
+                .D16(sh_index)
+                .append_word(self.is_64_bits, value)
+                .append_word(self.is_64_bits, size);
+        } else {
+            self.section
+                .append_word(self.is_64_bits, value)
+                .append_word(self.is_64_bits, size)
+                .D8(info.into())
+                .D8(0) // other
+                .D16(sh_index);
+        }
+
+        self
+    }
+
+    pub fn finish(self) -> Option<Vec<u8>> {
+        self.section.get_contents()
+    }
+}
+
+impl<T: Word + Sized> Default for SymbolTable<T> {
+    fn default() -> Self {
+        Self::with_endian(test_assembler::DEFAULT_ENDIAN)
+    }
+}
+
+#[derive(Copy, Clone)]
+pub struct StInfo {
+    pub bind: u8,
+    pub kind: u8,
+}
+
+impl Into<u8> for StInfo {
+    #[inline]
+    fn into(self) -> u8 {
+        self.bind << 4 + self.kind & 0xf
+    }
+}
+
+impl<T: Word + Sized> Into<Section> for SymbolTable<T> {
+    fn into(self) -> Section {
+        self.section
     }
 }

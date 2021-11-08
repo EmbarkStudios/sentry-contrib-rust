@@ -5,4 +5,5 @@ edition = "2021"
 
 [dependencies]
 goblin = "0.4"
+scroll = "0.10"
 test-assembler = "0.1.7-alpha.0"
