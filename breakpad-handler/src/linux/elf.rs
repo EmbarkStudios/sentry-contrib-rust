@@ -1,14 +1,196 @@
-cfg_if::cfg_if! {
-    if #[cfg(target_pointer_width = "64")] {
-        use goblin::elf64 as elf;
-    } else if #[cfg(target_pointer_width = "32")] {
-        use goblin::elf32 as elf;
-    } else {
-        compile_error!("unsupported pointer size");
-    }
+#[derive(Debug)]
+enum ElfClass {
+    Class32(goblin::elf32::header::Header),
+    Class64(goblin::elf64::header::Header),
 }
 
-use elf::{header::Header, program_header::ProgramHeader, section_header::SectionHeader};
+struct MappedElf<'elf> {
+    /// The actual byte buffer we are working against
+    data: &'elf [u8],
+    class: ElfClass,
+}
+
+impl<'elf> MappedElf<'elf> {
+    fn read(data: &'elf [u8]) -> Option<Self> {
+        // Check that this is actually a valid elf
+        if &data[..4] != goblin::elf::header::ELFMAG {
+            return None;
+        }
+
+        let class = dbg!(*data.get(4)?);
+
+        fn parse_header<H: Sized + Copy>(data: &[u8], size: usize) -> Option<H> {
+            if data.len() < size {
+                return None;
+            }
+
+            Some(unsafe { *data.as_ptr().cast::<H>() })
+        }
+
+        let class = match class {
+            goblin::elf::header::ELFCLASS32 => {
+                ElfClass::Class32(parse_header(data, goblin::elf32::header::SIZEOF_EHDR)?)
+            }
+            goblin::elf::header::ELFCLASS64 => {
+                ElfClass::Class64(parse_header(data, goblin::elf64::header::SIZEOF_EHDR)?)
+            }
+            _ => return None,
+        };
+
+        Some(Self { data, class })
+    }
+
+    fn find_section_by_name(&self, name: &str, kind: u32) -> Option<&'elf [u8]> {
+        macro_rules! find_section {
+            ($header:expr, $section_header:ty) => {{
+                if $header.e_shoff == 0 {
+                    return None;
+                }
+
+                let section_headers: &[$section_header] = unsafe {
+                    std::slice::from_raw_parts(
+                        self.data.as_ptr().offset($header.e_shoff as isize).cast(),
+                        $header.e_shnum as usize,
+                    )
+                };
+
+                let names_section = &section_headers[$header.e_shstrndx as usize];
+                let names = &self.data[names_section.sh_offset as usize
+                    ..names_section.sh_offset as usize + names_section.sh_size as usize];
+
+                let name = name.as_bytes();
+
+                for sh in section_headers {
+                    let name_end = sh.sh_name as usize + name.len();
+                    if name_end > names.len() {
+                        continue;
+                    }
+
+                    let section_name = &names[sh.sh_name as usize..name_end];
+                    if sh.sh_type == kind && name == section_name {
+                        return Some(
+                            &self.data[sh.sh_offset as usize
+                                ..sh.sh_offset as usize + sh.sh_size as usize],
+                        );
+                    }
+                }
+
+                None
+            }};
+        }
+
+        match self.class {
+            ElfClass::Class32(hdr) => {
+                find_section!(hdr, goblin::elf32::section_header::SectionHeader)
+            }
+            ElfClass::Class64(hdr) => {
+                find_section!(hdr, goblin::elf64::section_header::SectionHeader)
+            }
+        }
+    }
+
+    fn iter_segments(&self, kind: u32) -> impl Iterator<Item = &'elf [u8]> {
+        // We need to create our own concrete iterator, otherwise even things
+        // like chunkexactiterator have their own types that diverge due to
+        // different sizes
+        struct PHIter<'elf> {
+            ph_headers: &'elf [u8],
+            data: &'elf [u8],
+            kind: u32,
+            count: usize,
+            is_64: bool,
+            index: usize,
+        }
+
+        trait ProgramHeader: Sized {
+            fn kind(&self) -> u32;
+            fn offset(&self) -> usize;
+            fn size(&self) -> usize;
+        }
+
+        impl ProgramHeader for goblin::elf32::program_header::ProgramHeader {
+            fn kind(&self) -> u32 {
+                self.p_type
+            }
+            fn offset(&self) -> usize {
+                self.p_offset as usize
+            }
+            fn size(&self) -> usize {
+                self.p_filesz as usize
+            }
+        }
+
+        impl ProgramHeader for goblin::elf64::program_header::ProgramHeader {
+            fn kind(&self) -> u32 {
+                self.p_type
+            }
+            fn offset(&self) -> usize {
+                self.p_offset as usize
+            }
+            fn size(&self) -> usize {
+                self.p_filesz as usize
+            }
+        }
+
+        impl<'elf> Iterator for PHIter<'elf> {
+            type Item = &'elf [u8];
+
+            fn next(&mut self) -> Option<Self::Item> {
+                fn imp<'elf, PH: ProgramHeader>(this: &mut PHIter<'elf>) -> Option<&'elf [u8]> {
+                    let headers: &[PH] = unsafe {
+                        std::slice::from_raw_parts(this.ph_headers.as_ptr().cast(), this.count)
+                    };
+
+                    loop {
+                        if this.index >= headers.len() {
+                            return None;
+                        }
+
+                        if dbg!(headers[this.index].kind()) == dbg!(this.kind) {
+                            let hdr = &headers[this.index];
+                            this.index += 1;
+
+                            return Some(&this.data[hdr.offset()..hdr.offset() + hdr.size()]);
+                        }
+
+                        this.index += 1;
+                    }
+                }
+
+                if self.is_64 {
+                    imp::<goblin::elf64::program_header::ProgramHeader>(self)
+                } else {
+                    imp::<goblin::elf32::program_header::ProgramHeader>(self)
+                }
+            }
+        }
+
+        match self.class {
+            ElfClass::Class32(hdr) => PHIter {
+                ph_headers: &self.data[hdr.e_phoff as usize
+                    ..hdr.e_phoff as usize
+                        + std::mem::size_of::<goblin::elf32::program_header::ProgramHeader>()
+                            * hdr.e_phnum as usize],
+                data: self.data,
+                kind,
+                count: hdr.e_phnum as usize,
+                is_64: false,
+                index: 0,
+            },
+            ElfClass::Class64(hdr) => PHIter {
+                ph_headers: &self.data[hdr.e_phoff as usize
+                    ..hdr.e_phoff as usize
+                        + std::mem::size_of::<goblin::elf64::program_header::ProgramHeader>()
+                            * hdr.e_phnum as usize],
+                data: self.data,
+                kind,
+                count: hdr.e_phnum as usize,
+                is_64: true,
+                index: 0,
+            },
+        }
+    }
+}
 
 const MAX_ID_SIZE: usize = 64;
 
@@ -22,6 +204,29 @@ pub struct ElfId {
     // this, they can file a PR to expand, or fallback to a pagevec
     id: [u8; MAX_ID_SIZE],
     len: usize,
+}
+
+use std::fmt::{self, Write};
+
+impl fmt::Display for ElfId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", UpperHex(&self.id[..self.len]))
+    }
+}
+
+pub struct UpperHex<'buff>(&'buff [u8]);
+
+impl<'buff> fmt::Display for UpperHex<'buff> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        const CHARS: &[u8] = b"0123456789ABCDEF";
+
+        for &byte in self.0 {
+            f.write_char(CHARS[(byte >> 4) as usize] as char)?;
+            f.write_char(CHARS[(byte & 0xf) as usize] as char)?;
+        }
+
+        Ok(())
+    }
 }
 
 impl ElfId {
@@ -39,21 +244,26 @@ impl ElfId {
     }
 
     pub fn from_mapped_file(elf: &[u8]) -> Option<Self> {
-        // Unfortunately, for ease of use, the batteries included elf parser in
-        // goblin performs heap allocations, so we need to fall back to lazy
-        // parsing ourselves
-        let mut header_bytes = [0u8; elf::header::SIZEOF_EHDR];
-
-        if elf.len() < elf::header::SIZEOF_EHDR {
-            return None;
-        }
-
-        header_bytes.copy_from_slice(&elf[..elf::header::SIZEOF_EHDR]);
-        let header = Header::from_bytes(&header_bytes);
+        let melf = MappedElf::read(elf).unwrap();
 
         // Attempt to lookup the build-id embedded by the linker, but if no
         // build id is found, fallback to hashing the .text section
-        read_build_id_note(header, elf).or_else(|| hash_text_section(header, elf))
+
+        // lld normally creates 2 PT_NOTEs, ld/gold normally creates 1.
+        for note in melf.iter_segments(goblin::elf::program_header::PT_NOTE) {
+            if let Some(elf_id) = build_id_from_note(note) {
+                return Some(elf_id);
+            }
+        }
+
+        if let Some(elf_id) = melf
+            .find_section_by_name(".note.gnu.build-id", goblin::elf::section_header::SHT_NOTE)
+            .and_then(|id_sec| build_id_from_note(id_sec))
+        {
+            return Some(elf_id);
+        }
+
+        hash_text_section(&melf)
     }
 
     /// Converts this identifier into a UUID string with all uppercases. If the
@@ -174,88 +384,10 @@ fn build_id_from_note(note_section: &[u8]) -> Option<ElfId> {
     None
 }
 
-fn find_section_by_name<'buffer>(
-    header: &Header,
-    elf: &'buffer [u8],
-    name: &str,
-    kind: u32,
-) -> Option<&'buffer [u8]> {
-    if header.e_shoff == 0 {
-        return None;
-    }
-
-    let section_headers: &[SectionHeader] = unsafe {
-        std::mem::transmute(
-            &elf[header.e_shoff as usize
-                ..header.e_shoff as usize
-                    + std::mem::size_of::<SectionHeader>() * header.e_shnum as usize],
-        )
-    };
-
-    let names_section = &section_headers[header.e_shstrndx as usize];
-    let names = &elf[names_section.sh_offset as usize
-        ..names_section.sh_offset as usize + names_section.sh_size as usize];
-
-    let name = name.as_bytes();
-
-    for sh in section_headers {
-        let name_end = sh.sh_name as usize + name.len();
-        if name_end > names.len() {
-            continue;
-        }
-
-        let section_name = &names[sh.sh_name as usize..name_end];
-        if sh.sh_type == kind && name == section_name {
-            return Some(&elf[sh.sh_offset as usize..sh.sh_offset as usize + sh.sh_size as usize]);
-        }
-    }
-
-    None
-}
-
-fn iter_segments<'buffer>(
-    header: &Header,
-    elf: &'buffer [u8],
-    kind: u32,
-) -> impl Iterator<Item = &'buffer [u8]> {
-    let program_headers: &[ProgramHeader] = unsafe {
-        std::mem::transmute(
-            &elf[header.e_phoff as usize
-                ..header.e_phoff as usize
-                    + std::mem::size_of::<ProgramHeader>() * header.e_phnum as usize],
-        )
-    };
-
-    program_headers.iter().filter_map(move |ph| {
-        (ph.p_type == kind)
-            .then(|| &elf[ph.p_offset as usize..ph.p_offset as usize + ph.p_filesz as usize])
-    })
-}
-
-fn read_build_id_note(header: &Header, elf: &[u8]) -> Option<ElfId> {
-    // lld normally creates 2 PT_NOTEs, ld/gold normally creates 1.
-    for note in iter_segments(header, elf, goblin::elf::program_header::PT_NOTE) {
-        if let Some(elf_id) = build_id_from_note(note) {
-            return Some(elf_id);
-        }
-    }
-
-    let build_id_section = find_section_by_name(
-        header,
-        elf,
-        ".note.gnu.build-id",
-        goblin::elf::section_header::SHT_NOTE,
-    )?;
-    build_id_from_note(build_id_section)
-}
-
-fn hash_text_section(header: &Header, elf: &[u8]) -> Option<ElfId> {
-    let text_section = find_section_by_name(
-        header,
-        elf,
-        ".text",
-        goblin::elf::section_header::SHT_PROGBITS,
-    )?;
+fn hash_text_section(melf: &MappedElf<'_>) -> Option<ElfId> {
+    let text_section = melf
+        .find_section_by_name(".text", goblin::elf::section_header::SHT_PROGBITS)
+        .unwrap();
 
     // Breakpad limits this to 16-bytes (GUID-ish) size for backwards compat, so
     // we do the same, not that this method should really ever be used in practice
@@ -283,7 +415,21 @@ mod test {
     use goblin::elf;
     use rstest::{self, *};
     use rstest_reuse::{self, *};
-    use synth_elf::{ElfClass, Endian, Section};
+    use synth_elf::{ElfClass, Endian, Notes, Section};
+
+    trait Populate {
+        fn populate(&mut self, count: usize, prime: usize) -> &mut Self;
+    }
+
+    impl Populate for Section {
+        fn populate(&mut self, count: usize, prime: usize) -> &mut Self {
+            for i in 0..count {
+                self.append_bytes(&[((i % prime) % 256) as u8]);
+            }
+
+            self
+        }
+    }
 
     // breakpad also has a "strip self" test where it literally strips the running
     // test executable by shelling out to strip which is....yah. Can add that
@@ -291,8 +437,8 @@ mod test {
 
     #[template]
     #[rstest]
-    //#[case(ElfClass::Class32)]
-    #[case(ElfClass::Class64)]
+    #[case::class32(ElfClass::Class32)]
+    #[case::class64(ElfClass::Class64)]
     fn classes(#[case] class: ElfClass) {}
 
     #[apply(classes)]
@@ -308,7 +454,198 @@ mod test {
         let elf_data = elf.finish().unwrap();
 
         let id = ElfId::from_mapped_file(&elf_data).unwrap();
-
         assert_eq!(id.as_uuid_string(), "80808080808000000000008080808080");
+    }
+
+    #[apply(classes)]
+    fn build_id(#[case] class: ElfClass) {
+        let mut elf = synth_elf::Elf::new(elf::header::EM_386, class, Endian::Little);
+
+        // Add a text section which should _not_ be used for the build id since
+        // we insert the specific build-id note
+        {
+            let mut text_section = Section::with_endian(Endian::Little);
+            text_section.append_repeated(0, 4 * 1024);
+            elf.add_section(".text", text_section, elf::section_header::SHT_PROGBITS);
+        }
+
+        let build_id = b"0123456789ABCDEFGHIJ";
+
+        // The actual build-id we want to test for
+        {
+            let mut notes = Notes::with_endian(Endian::Little);
+            notes.add_note(goblin::elf::note::NT_GNU_BUILD_ID, "GNU", build_id);
+
+            elf.add_section(".note.gnu.build-id", notes, elf::section_header::SHT_NOTE);
+        }
+
+        let elf_data = elf.finish().unwrap();
+
+        let id = ElfId::from_mapped_file(&elf_data).unwrap();
+        assert_eq!(id.as_ref(), build_id);
+    }
+
+    #[apply(classes)]
+    fn short_build_id(#[case] class: ElfClass) {
+        let mut elf = synth_elf::Elf::new(elf::header::EM_386, class, Endian::Little);
+
+        // Add a text section which should _not_ be used for the build id since
+        // we insert the specific build-id note
+        {
+            let mut text_section = Section::with_endian(Endian::Little);
+            text_section.append_repeated(0, 4 * 1024);
+            elf.add_section(".text", text_section, elf::section_header::SHT_PROGBITS);
+        }
+
+        let build_id = b"0123";
+
+        // The actual build-id we want to test for
+        {
+            let mut notes = Notes::with_endian(Endian::Little);
+            notes.add_note(goblin::elf::note::NT_GNU_BUILD_ID, "GNU", build_id);
+
+            elf.add_section(".note.gnu.build-id", notes, elf::section_header::SHT_NOTE);
+        }
+
+        let elf_data = elf.finish().unwrap();
+
+        let id = ElfId::from_mapped_file(&elf_data).unwrap();
+        assert_eq!(id.as_ref(), build_id);
+    }
+
+    #[apply(classes)]
+    fn long_build_id(#[case] class: ElfClass) {
+        let mut elf = synth_elf::Elf::new(elf::header::EM_386, class, Endian::Little);
+
+        // Add a text section which should _not_ be used for the build id since
+        // we insert the specific build-id note
+        {
+            let mut text_section = Section::with_endian(Endian::Little);
+            text_section.append_repeated(0, 4 * 1024);
+            elf.add_section(".text", text_section, elf::section_header::SHT_PROGBITS);
+        }
+
+        let build_id: Vec<_> = (0..32).into_iter().collect();
+
+        // The actual build-id we want to test for
+        {
+            let mut notes = Notes::with_endian(Endian::Little);
+            notes.add_note(goblin::elf::note::NT_GNU_BUILD_ID, "GNU", &build_id);
+
+            elf.add_section(".note.gnu.build-id", notes, elf::section_header::SHT_NOTE);
+        }
+
+        let elf_data = elf.finish().unwrap();
+
+        let id = ElfId::from_mapped_file(&elf_data).unwrap();
+        assert_eq!(id.as_ref(), build_id);
+    }
+
+    #[apply(classes)]
+    fn pt_note(#[case] class: ElfClass) {
+        let mut elf = synth_elf::Elf::new(elf::header::EM_386, class, Endian::Little);
+
+        // Add a text section which should _not_ be used for the build id since
+        // we insert the specific build-id note
+        {
+            let mut text_section = Section::with_endian(Endian::Little);
+            text_section.append_repeated(0, 4 * 1024);
+            elf.add_section(".text", text_section, elf::section_header::SHT_PROGBITS);
+        }
+
+        let build_id: Vec<_> = (0..20).into_iter().collect();
+
+        // The actual build-id we want to test for
+        let index = {
+            let mut notes = Notes::with_endian(Endian::Little);
+            notes.add_note(0, "Linux", &[0x42, 0x2, 0, 0]);
+            notes.add_note(goblin::elf::note::NT_GNU_BUILD_ID, "GNU", &build_id);
+
+            elf.add_section(".note", notes, elf::section_header::SHT_NOTE)
+        };
+
+        elf.add_segment(index, index, elf::program_header::PT_NOTE, 0);
+
+        let elf_data = elf.finish().unwrap();
+
+        let id = ElfId::from_mapped_file(&elf_data).unwrap();
+        assert_eq!(id.as_ref(), build_id);
+    }
+
+    #[apply(classes)]
+    fn multiple_pt_notes(#[case] class: ElfClass) {
+        let mut elf = synth_elf::Elf::new(elf::header::EM_386, class, Endian::Little);
+
+        // Add a text section which should _not_ be used for the build id since
+        // we insert the specific build-id note
+        {
+            let mut text_section = Section::with_endian(Endian::Little);
+            text_section.append_repeated(0, 4 * 1024);
+            elf.add_section(".text", text_section, elf::section_header::SHT_PROGBITS);
+        }
+
+        let build_id: Vec<_> = (0..20).into_iter().collect();
+
+        {
+            // Another note that we should disregard
+            let mut first = Notes::with_endian(Endian::Little);
+            first.add_note(0, "Linux", &[0x42, 0x2, 0, 0]);
+
+            // The actual build-id we want to test for
+            let mut second = Notes::with_endian(Endian::Little);
+            second.add_note(goblin::elf::note::NT_GNU_BUILD_ID, "GNU", &build_id);
+
+            let note1 = elf.add_section(".note1", first, elf::section_header::SHT_NOTE);
+            let note2 = elf.add_section(".note2", second, elf::section_header::SHT_NOTE);
+
+            elf.add_segment(note1, note1, elf::program_header::PT_NOTE, 0);
+            elf.add_segment(note2, note2, elf::program_header::PT_NOTE, 0);
+        }
+
+        let elf_data = elf.finish().unwrap();
+
+        let id = ElfId::from_mapped_file(&elf_data).unwrap();
+        assert_eq!(id.as_ref(), build_id);
+    }
+
+    #[apply(classes)]
+    fn unique_hashes(#[case] class: ElfClass) {
+        let first = {
+            let mut elf = synth_elf::Elf::new(elf::header::EM_386, class, Endian::Little);
+
+            elf.add_section(
+                ".foo",
+                Section::inline(Some(Endian::Little), |s| s.populate(32, 5)),
+                elf::section_header::SHT_PROGBITS,
+            );
+
+            elf.add_section(
+                ".text",
+                Section::inline(Some(Endian::Little), |s| s.populate(4 * 1024, 17)),
+                elf::section_header::SHT_PROGBITS,
+            );
+
+            ElfId::from_mapped_file(&elf.finish().unwrap()).unwrap()
+        };
+
+        let second = {
+            let mut elf = synth_elf::Elf::new(elf::header::EM_386, class, Endian::Little);
+
+            elf.add_section(
+                ".foo",
+                Section::inline(Some(Endian::Little), |s| s.populate(32, 5)),
+                elf::section_header::SHT_PROGBITS,
+            );
+
+            elf.add_section(
+                ".text",
+                Section::inline(Some(Endian::Little), |s| s.populate(4 * 1024, 31)),
+                elf::section_header::SHT_PROGBITS,
+            );
+
+            ElfId::from_mapped_file(&elf.finish().unwrap()).unwrap()
+        };
+
+        assert_ne!(first.as_ref(), second.as_ref());
     }
 }
