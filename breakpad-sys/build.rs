@@ -114,7 +114,7 @@ fn main() {
             );
         }
         "macos" => {
-            build.define("TARGET_OS_MAC", None);
+            build.define("TARGET_OS_MAC", None).flag("-H");
 
             add_sources(&mut build, "breakpad/src/client", &["minidump_file_writer"]);
 
