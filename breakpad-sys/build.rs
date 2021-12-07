@@ -12,6 +12,10 @@ fn add_sources(build: &mut cc::Build, root: &str, files: &[&str]) {
 fn main() {
     let mut build = cc::Build::new();
 
+    for (k, v) in std::env::vars() {
+        println!("{} = {}", k, v);
+    }
+
     build
         .cpp(true)
         .warnings(false)
