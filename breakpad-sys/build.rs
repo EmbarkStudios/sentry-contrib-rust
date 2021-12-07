@@ -40,6 +40,8 @@ fn main() {
         &["convert_UTF", "string_conversion"],
     );
 
+    build.define("TARGET_OS_WINDOWS", "0");
+
     match std::env::var("CARGO_CFG_TARGET_OS")
         .expect("TARGET_OS not specified")
         .as_str()
@@ -96,7 +98,7 @@ fn main() {
         }
         "windows" => {
             build
-                .define("TARGET_OS_WINDOWS", None)
+                .define("TARGET_OS_WINDOWS", "1")
                 .define("UNICODE", None);
 
             add_sources(&mut build, "breakpad/src/common/windows", &["guid_string"]);

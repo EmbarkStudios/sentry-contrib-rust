@@ -3,7 +3,7 @@
 
 #include "exception_handler.h"
 
-#if defined(TARGET_OS_WINDOWS)
+#if TARGET_OS_WINDOWS
     #error "this should be impossible"
     #define CHAR_TYPE uint16_t
 #else
@@ -36,7 +36,7 @@ extern "C" {
         bp_ctx->callback = crash_cb;
         bp_ctx->callback_ctx = callback_ctx;
 
-        #if defined(TARGET_OS_WINDOWS)
+        #if TARGET_OS_WINDOWS
             std::wstring dump_path(reinterpret_cast<const wchar_t*>(path), path_len);
 
             auto crash_callback = [](
