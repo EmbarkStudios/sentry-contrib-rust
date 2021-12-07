@@ -4,7 +4,6 @@
 #include "exception_handler.h"
 
 #if TARGET_OS_WINDOWS
-    #error "this should be impossible"
     #define CHAR_TYPE uint16_t
 #else
     #define CHAR_TYPE uint8_t
