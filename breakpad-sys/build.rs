@@ -19,8 +19,6 @@ fn main() {
     build
         .cpp(true)
         .warnings(false)
-        .flag_if_supported("-std=c++11")
-        .flag_if_supported("-fpermissive")
         .include(".")
         .include("breakpad/src")
         .define("BPLOG_MINIMUM_SEVERITY", "SEVERITY_ERROR")
@@ -28,6 +26,10 @@ fn main() {
             "BPLOG(severity)",
             "1 ? (void)0 : google_breakpad::LogMessageVoidify() & (BPLOG_ERROR)",
         );
+
+    if !build.get_compiler().is_like_msvc() {
+        build.flag("-std=c++11").flag("-fpermissive");
+    }
 
     // Our file that implements a small C API that we can easily bind to
     build.file("src/impl.cpp");
