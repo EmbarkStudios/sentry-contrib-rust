@@ -4,26 +4,24 @@ unmaintained = "deny"
 yanked = "deny"
 notice = "deny"
 ignore = [
+    # chrono
+    "RUSTSEC-2020-0159",
+    # time
+    "RUSTSEC-2020-0071",
 ]
 
 [licenses]
 unlicensed = "deny"
-allow = [
-    "MIT",
-    "Apache-2.0",
-    "BSD-3-Clause",
-]
+allow = ["MIT", "Apache-2.0", "BSD-3-Clause"]
 copyleft = "deny"
 allow-osi-fsf-free = "neither"
 default = "deny"
-exceptions = [
-]
+exceptions = []
 
 [bans]
 multiple-versions = "deny"
 wildcards = "deny"
-skip = [
-]
+skip = []
 
 [sources]
 unknown-registry = "deny"
@@ -31,6 +29,4 @@ unknown-git = "deny"
 allow-git = []
 
 [sources.allow-org]
-github = [
-    "EmbarkStudios",
-]
+github = ["EmbarkStudios"]

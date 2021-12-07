@@ -15,8 +15,6 @@ fn main() {
     build
         .cpp(true)
         .warnings(false)
-        .flag_if_supported("-std=c++11")
-        .flag_if_supported("-fpermissive")
         .include(".")
         .include("breakpad/src")
         .define("BPLOG_MINIMUM_SEVERITY", "SEVERITY_ERROR")
@@ -24,6 +22,10 @@ fn main() {
             "BPLOG(severity)",
             "1 ? (void)0 : google_breakpad::LogMessageVoidify() & (BPLOG_ERROR)",
         );
+
+    if !build.get_compiler().is_like_msvc() {
+        build.flag("-std=c++11").flag("-fpermissive");
+    }
 
     // Our file that implements a small C API that we can easily bind to
     build.file("src/impl.cpp");
@@ -33,6 +35,8 @@ fn main() {
         "breakpad/src/common",
         &["convert_UTF", "string_conversion"],
     );
+
+    build.define("TARGET_OS_WINDOWS", "0");
 
     match std::env::var("CARGO_CFG_TARGET_OS")
         .expect("TARGET_OS not specified")
@@ -90,7 +94,7 @@ fn main() {
         }
         "windows" => {
             build
-                .define("TARGET_OS_WINDOWS", None)
+                .define("TARGET_OS_WINDOWS", "1")
                 .define("UNICODE", None);
 
             add_sources(&mut build, "breakpad/src/common/windows", &["guid_string"]);
