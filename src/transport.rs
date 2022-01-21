@@ -15,7 +15,7 @@ pub enum CrashSendStyle {
 }
 
 /// The [`TransportFactory`](https://docs.rs/sentry-core/0.23.0/sentry_core/trait.TransportFactory.html) implementation that must be used in concert with
-/// [BreakpadIntegration](crate::BreakpadIntegration) to report crash events to
+/// [`BreakpadIntegration`](crate::BreakpadIntegration) to report crash events to
 /// Sentry
 pub struct BreakpadTransportFactory {
     inner: Arc<dyn TransportFactory>,
