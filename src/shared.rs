@@ -1,5 +1,5 @@
 use sentry_core::{protocol as proto, types};
-use std::path::Path;
+use std::{path::Path, time::SystemTime};
 
 pub(crate) fn assemble_envelope(md: CrashMetadata, minidump_path: &Path) -> proto::Envelope {
     let mut envelope = proto::Envelope::new();
@@ -14,7 +14,7 @@ pub(crate) fn assemble_envelope(md: CrashMetadata, minidump_path: &Path) -> prot
                 .ok()
                 .and_then(|md| md.created().ok().map(|st| st.into()))
         })
-        .unwrap_or_else(types::Utc::now);
+        .unwrap_or_else(SystemTime::now);
 
     // An event_id is required, so if we were unable to get one from the .metadata
     // we just use the guid in the filename of the minidump

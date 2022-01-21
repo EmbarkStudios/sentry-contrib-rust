@@ -1,5 +1,5 @@
-use sentry_core::{protocol as proto, types};
-use std::path::Path;
+use sentry_core::protocol as proto;
+use std::{path::Path, time::SystemTime};
 
 pub use breakpad_handler::InstallOptions;
 
@@ -59,7 +59,7 @@ impl BreakpadIntegration {
                         // We want to set the timestamp here since we aren't actually
                         // going to send the crash directly, but rather the next time
                         // this integration is initialized
-                        timestamp: types::Utc::now(),
+                        timestamp: SystemTime::now(),
                         // This is the easiest way to indicate a session crash update
                         // in the same envelope with the crash itself. :p
                         exception: vec![proto::Exception {
