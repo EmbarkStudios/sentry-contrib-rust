@@ -12,7 +12,7 @@ pub(crate) fn assemble_envelope(md: CrashMetadata, minidump_path: &Path) -> prot
             minidump_path
                 .metadata()
                 .ok()
-                .and_then(|md| md.created().ok().map(|st| st.into()))
+                .and_then(|md| md.created().ok())
         })
         .unwrap_or_else(SystemTime::now);
 
@@ -93,7 +93,7 @@ impl CrashMetadata {
 
         let event = lines.next().and_then(|eve| {
             if !eve.is_empty() {
-                match serde_json::from_str::<proto::Event>(eve) {
+                match serde_json::from_str::<proto::Event<'_>>(eve) {
                     Ok(event) => Some(event),
                     Err(e) => {
                         debug_print!("unable to deserialize Event: {}", e);
@@ -107,7 +107,7 @@ impl CrashMetadata {
 
         let session_update = lines.next().and_then(|su| {
             if !su.is_empty() {
-                match serde_json::from_str::<proto::SessionUpdate>(su) {
+                match serde_json::from_str::<proto::SessionUpdate<'_>>(su) {
                     Ok(sess) => Some(sess),
                     Err(e) => {
                         debug_print!("unable to deserialize SessionUpdate: {}", e);
