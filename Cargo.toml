@@ -23,8 +23,6 @@ debug-logs = []
 
 [dependencies]
 breakpad-handler = { version = "0.1.0", path = "./breakpad-handler" }
-crossbeam = "0.8.0"
-parking_lot = "0.11"
 sentry-core = { version = "0.24", features = ["client"] }
 serde_json = "1.0"
 
