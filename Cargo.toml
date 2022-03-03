@@ -23,7 +23,7 @@ debug-logs = []
 
 [dependencies]
 breakpad-handler = { version = "0.1.0", path = "./breakpad-handler" }
-sentry-core = { version = "0.24", features = ["client"] }
+sentry-core = { version = "0.25", features = ["client"] }
 serde_json = "1.0"
 
 [workspace]
