@@ -48,6 +48,7 @@ pub(crate) fn assemble_envelope(md: CrashMetadata, minidump_path: &Path) -> prot
             envelope.add_item(proto::EnvelopeItem::Attachment(proto::Attachment {
                 buffer: minidump,
                 filename: minidump_path.file_name().unwrap().to_string_lossy().into(),
+                content_type: Some("application/octet-stream".to_owned()),
                 ty: Some(proto::AttachmentType::Minidump),
             }));
         }
