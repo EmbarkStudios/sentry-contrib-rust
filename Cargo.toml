@@ -10,12 +10,11 @@ readme = "README.md"
 documentation = "https://docs.rs/sentry-contrib-breakpad"
 homepage = "https://github.com/EmbarkStudios/sentry-contrib-rust"
 keywords = ["breakpad", "sentry", "minidump", "crash"]
-exclude = [
-    ".github",
-    "release.toml",
-    "breakpad-handler",
-    "breakpad-sys",
-]
+exclude = [".github", "release.toml", "breakpad-handler", "breakpad-sys"]
+
+[badges]
+# We don't use this crate ourselves any longer
+maintenance = { status = "passively-maintained" }
 
 [features]
 default = []
@@ -23,11 +22,8 @@ debug-logs = []
 
 [dependencies]
 breakpad-handler = { version = "0.1.0", path = "./breakpad-handler" }
-sentry-core = { version = "0.27", features = ["client"] }
+sentry-core = { version = "0.28", features = ["client"] }
 serde_json = "1.0"
 
 [workspace]
-members = [
-    "breakpad-handler",
-    "breakpad-sys",
-]
+members = ["breakpad-handler", "breakpad-sys"]

@@ -4,15 +4,13 @@ unmaintained = "deny"
 yanked = "deny"
 notice = "deny"
 ignore = [
-    # chrono
-    "RUSTSEC-2020-0159",
     # time
     "RUSTSEC-2020-0071",
 ]
 
 [licenses]
+allow = ["MIT", "Apache-2.0", "BSD-3-Clause", "Unicode-DFS-2016"]
 unlicensed = "deny"
-allow = ["MIT", "Apache-2.0", "BSD-3-Clause"]
 copyleft = "deny"
 allow-osi-fsf-free = "neither"
 default = "deny"
@@ -22,6 +20,10 @@ exceptions = []
 multiple-versions = "deny"
 wildcards = "deny"
 skip = []
+skip-tree = [
+    # sentry-types depends on both time 0.3 and chrono -> time 0.1
+    { name = "time", version = "=0.1.44" },
+]
 
 [sources]
 unknown-registry = "deny"
