@@ -8,6 +8,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 <!-- next-header -->
 ## [Unreleased] - ReleaseDate
+### Changed
+- [PR#18](https://github.com/EmbarkStudios/sentry-contrib-rust/pull/18) bumped `sentry-core` to `0.28`.
+
 ## [0.5.0] - 2022-06-29
 ### Changed
 - [PR#15](https://github.com/EmbarkStudios/sentry-contrib-rust/pull/15) bumped `sentry-core` to `0.27`.
