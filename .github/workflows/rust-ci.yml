@@ -55,6 +55,8 @@ jobs:
         with:
           submodules: true
       - uses: EmbarkStudios/cargo-deny-action@v1
+        with:
+          command-arguments: -D warnings
   publish-check:
     name: Publish Check
     runs-on: ubuntu-20.04
