@@ -1,4 +1,8 @@
-# 👁 sentry-contrib-breakpad
+<div align="center">
+
+# `👁 sentry-contrib-breakpad`
+
+**Provides a small library to integrate native crash dump handling with Sentry, without relying on [sentry-native](https://github.com/getsentry/sentry-native).**
 
 [![Embark](https://img.shields.io/badge/embark-open%20source-blueviolet.svg)](https://embark.dev)
 [![Embark](https://img.shields.io/badge/discord-ark-%237289da.svg?logo=discord)](https://discord.gg/dAuKfZS)
@@ -7,7 +11,7 @@
 [![dependency status](https://deps.rs/repo/github/EmbarkStudios/sentry-contrib-breakpad/status.svg)](https://deps.rs/repo/github/EmbarkStudios/sentry-contrib-breakpad)
 [![Build status](https://github.com/EmbarkStudios/sentry-contrib-rust/workflows/CI/badge.svg)](https://github.com/EmbarkStudios/sentry-contrib-rust/actions)
 
-Provides a small library to integrate native crash dump handling with Sentry, without relying on [sentry-native](https://github.com/getsentry/sentry-native).
+</div>
 
 ## Contributing
 
@@ -21,8 +25,8 @@ Please read our [Contributor Guide](CONTRIBUTING.md) for more information on how
 
 Licensed under either of
 
-* Apache License, Version 2.0, ([LICENSE-APACHE](LICENSE-APACHE) or http://www.apache.org/licenses/LICENSE-2.0)
-* MIT license ([LICENSE-MIT](LICENSE-MIT) or http://opensource.org/licenses/MIT)
+* Apache License, Version 2.0, ([LICENSE-APACHE](LICENSE-APACHE) or <http://www.apache.org/licenses/LICENSE-2.0>)
+* MIT license ([LICENSE-MIT](LICENSE-MIT) or <http://opensource.org/licenses/MIT>)
 
 at your option.
 
