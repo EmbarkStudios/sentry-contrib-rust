@@ -101,7 +101,7 @@ impl BreakpadTransport {
                         let serialized = md.serialize();
 
                         minidump_path.set_extension("metadata");
-                        if let Err(e) = std::fs::write(&minidump_path, &serialized) {
+                        if let Err(e) = std::fs::write(&minidump_path, serialized) {
                             debug_print!(
                                 "failed to write crash metadata {}: {}",
                                 minidump_path.display(),
