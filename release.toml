@@ -8,3 +8,11 @@ pre-release-replacements = [
   { file = "CHANGELOG.md", search = "<!-- next-header -->", replace = "<!-- next-header -->\n## [Unreleased] - ReleaseDate" },
   { file = "CHANGELOG.md", search = "<!-- next-url -->", replace = "<!-- next-url -->\n[Unreleased]: https://github.com/EmbarkStudios/sentry-contrib-rust/compare/{{tag_name}}...HEAD" },
 ]
+
+# cargo-release only allows using {{version}} in the commit title when creating one
+# commit across all released packages in this workspace (we only release one package
+# though), or by using the same version for all packages.
+# https://github.com/crate-ci/cargo-release/issues/540#issuecomment-1328769105
+# https://github.com/crate-ci/cargo-release/commit/3af94caa4b9bbee010a5cf3f196cc4afffbaf192
+consolidate-commits = false
+shared-version = true
