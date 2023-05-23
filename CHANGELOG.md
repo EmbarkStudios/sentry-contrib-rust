@@ -8,6 +8,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 <!-- next-header -->
 ## [Unreleased] - ReleaseDate
+### Changed
+- [PR#24](https://github.com/EmbarkStudios/sentry-contrib-rust/pull/24) updated the underlying breakpad C++ library to ~HEAD. Thanks [@MarijnS95](https://github.com/MarijnS95)!
+
 ## [0.7.0] - 2022-12-16
 ### Changed
 - [PR#22](https://github.com/EmbarkStudios/sentry-contrib-rust/pull/22) bumped `sentry-core` to `>=0.29` which will hopefully mean we don't need to bump version numbers for new releases until there is an actual breaking change.
