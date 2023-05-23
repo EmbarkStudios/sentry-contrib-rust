@@ -2,7 +2,7 @@
 name = "sentry-contrib-breakpad"
 description = "Unopinionated crash collection for Sentry reporting purposes"
 repository = "https://github.com/EmbarkStudios/sentry-contrib-rust"
-version = "0.7.0"
+version = "0.8.0"
 authors = ["Embark <opensource@embark-studios.com>"]
 edition = "2018"
 license = "MIT OR Apache-2.0"

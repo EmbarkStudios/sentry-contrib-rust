@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 <!-- next-header -->
 ## [Unreleased] - ReleaseDate
+## [0.8.0] - 2023-05-23
 ### Changed
 - [PR#24](https://github.com/EmbarkStudios/sentry-contrib-rust/pull/24) updated the underlying breakpad C++ library to ~HEAD. Thanks [@MarijnS95](https://github.com/MarijnS95)!
 
@@ -47,7 +48,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Initial implementation
 
 <!-- next-url -->
-[Unreleased]: https://github.com/EmbarkStudios/sentry-contrib-rust/compare/0.7.0...HEAD
+[Unreleased]: https://github.com/EmbarkStudios/sentry-contrib-rust/compare/0.8.0...HEAD
+[0.8.0]: https://github.com/EmbarkStudios/sentry-contrib-rust/compare/0.7.0...0.8.0
 [0.7.0]: https://github.com/EmbarkStudios/sentry-contrib-rust/compare/0.6.0...0.7.0
 [0.6.0]: https://github.com/EmbarkStudios/sentry-contrib-rust/compare/0.5.0...0.6.0
 [0.5.0]: https://github.com/EmbarkStudios/sentry-contrib-rust/compare/0.4.0...0.5.0
