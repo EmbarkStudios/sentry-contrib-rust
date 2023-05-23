@@ -24,7 +24,7 @@ fn main() {
         );
 
     if !build.get_compiler().is_like_msvc() {
-        build.flag("-std=c++11").flag("-fpermissive");
+        build.flag("-std=c++17").flag("-fpermissive");
     }
 
     // Our file that implements a small C API that we can easily bind to
@@ -83,7 +83,12 @@ fn main() {
             add_sources(
                 &mut build,
                 "breakpad/src/client/linux/minidump_writer",
-                &["linux_dumper", "linux_ptrace_dumper", "minidump_writer"],
+                &[
+                    "linux_dumper",
+                    "linux_ptrace_dumper",
+                    "minidump_writer",
+                    "pe_file",
+                ],
             );
 
             add_sources(
@@ -122,6 +127,7 @@ fn main() {
                 &mut build,
                 "breakpad/src/common/mac",
                 &[
+                    "arch_utilities",
                     "file_id",
                     "macho_id",
                     "macho_utilities",
