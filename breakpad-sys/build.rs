@@ -127,6 +127,7 @@ fn main() {
                 &mut build,
                 "breakpad/src/common/mac",
                 &[
+                    "arch_utilities",
                     "file_id",
                     "macho_id",
                     "macho_utilities",
