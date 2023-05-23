@@ -158,7 +158,7 @@ fn main() {
 
             println!("cargo:rustc-link-lib=framework=Foundation");
         }
-        unsupported => unimplemented!("{} is not a supported target", unsupported),
+        unsupported => panic!("'{unsupported}' is not a supported target"),
     }
 
     build.compile("breakpad");

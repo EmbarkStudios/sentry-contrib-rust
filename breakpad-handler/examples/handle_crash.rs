@@ -19,6 +19,7 @@ fn main() {
     )
     .unwrap();
 
+    #[allow(unsafe_code)]
     unsafe {
         if std::env::args().any(|a| a == "--crash") {
             let ptr: *mut u8 = std::ptr::null_mut();

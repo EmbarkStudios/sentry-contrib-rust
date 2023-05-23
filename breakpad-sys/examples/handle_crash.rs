@@ -15,6 +15,7 @@ fn main() {
         }
     };
 
+    #[allow(unsafe_code)]
     unsafe {
         extern "C" fn callback(
             path: *const breakpad_sys::PathChar,

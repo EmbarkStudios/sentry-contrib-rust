@@ -14,7 +14,7 @@ where
     F: Fn(std::path::PathBuf) + Send + Sync,
 {
     fn on_crash(&self, minidump_path: std::path::PathBuf) {
-        self(minidump_path)
+        self(minidump_path);
     }
 }
 
@@ -50,7 +50,9 @@ pub struct BreakpadHandler {
     on_crash: *mut std::ffi::c_void,
 }
 
+#[allow(unsafe_code)]
 unsafe impl Send for BreakpadHandler {}
+#[allow(unsafe_code)]
 unsafe impl Sync for BreakpadHandler {}
 
 impl BreakpadHandler {
@@ -72,8 +74,10 @@ impl BreakpadHandler {
             _ => {}
         }
 
-        let on_crash = Box::into_raw(Box::new(on_crash)) as *mut _;
+        let on_crash = Box::into_raw(Box::new(on_crash)).cast();
 
+        #[allow(unsafe_code)]
+        // SAFETY: Calling into C code :shrug:
         unsafe {
             let os_str = crash_dir.as_ref().as_os_str();
 
@@ -110,7 +114,7 @@ impl BreakpadHandler {
                     }
                 };
 
-                let context: Box<Box<dyn CrashEvent>> = unsafe { Box::from_raw(ctx as *mut _) };
+                let context: Box<Box<dyn CrashEvent>> = unsafe { Box::from_raw(ctx.cast()) };
                 context.on_crash(path);
                 Box::leak(context);
             }
@@ -137,9 +141,11 @@ impl BreakpadHandler {
 
 impl Drop for BreakpadHandler {
     fn drop(&mut self) {
+        #[allow(unsafe_code)]
+        // SAFETY: Calling into C code
         unsafe {
             breakpad_sys::detach_exception_handler(self.handler);
-            let _: Box<Box<dyn CrashEvent>> = Box::from_raw(self.on_crash as *mut _);
+            let _: Box<Box<dyn CrashEvent>> = Box::from_raw(self.on_crash.cast());
             HANDLER_ATTACHED.swap(false, atomic::Ordering::Relaxed);
         }
     }
