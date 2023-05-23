@@ -83,7 +83,12 @@ fn main() {
             add_sources(
                 &mut build,
                 "breakpad/src/client/linux/minidump_writer",
-                &["linux_dumper", "linux_ptrace_dumper", "minidump_writer", "pe_file"],
+                &[
+                    "linux_dumper",
+                    "linux_ptrace_dumper",
+                    "minidump_writer",
+                    "pe_file",
+                ],
             );
 
             add_sources(
