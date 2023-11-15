@@ -8,6 +8,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 <!-- next-header -->
 ## [Unreleased] - ReleaseDate
+### Fixed
+- Commit [6adfcc4] pinned `sentry-types` to <=0.31.6 to avoid a breaking change in >=0.31.7.
+
 ## [0.8.0] - 2023-05-23
 ### Changed
 - [PR#24](https://github.com/EmbarkStudios/sentry-contrib-rust/pull/24) updated the underlying breakpad C++ library to ~HEAD. Thanks [@MarijnS95](https://github.com/MarijnS95)!
