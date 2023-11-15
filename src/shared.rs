@@ -23,7 +23,7 @@ pub(crate) fn assemble_envelope(md: CrashMetadata, minidump_path: &Path) -> prot
             event_id: minidump_path
                 .file_stem()
                 .and_then(|fname| fname.to_str().and_then(|fs| fs.parse::<types::Uuid>().ok()))
-                .unwrap_or_else(types::Uuid::new_v4),
+                .unwrap_or_else(types::random_uuid),
             level: proto::Level::Fatal,
             timestamp,
             ..Default::default()
