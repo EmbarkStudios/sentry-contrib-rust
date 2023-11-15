@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 <!-- next-header -->
 ## [Unreleased] - ReleaseDate
+## [0.8.2] - 2023-11-15
 ### Fixed
 - Commit [7f48012] pinned `sentry-types` to =0.31.6 to avoid a breaking change in >=0.31.7.
 
@@ -55,7 +56,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Initial implementation
 
 <!-- next-url -->
-[Unreleased]: https://github.com/EmbarkStudios/sentry-contrib-rust/compare/0.8.1...HEAD
+[Unreleased]: https://github.com/EmbarkStudios/sentry-contrib-rust/compare/0.8.2...HEAD
+[0.8.2]: https://github.com/EmbarkStudios/sentry-contrib-rust/compare/0.8.1...0.8.2
 [0.8.1]: https://github.com/EmbarkStudios/sentry-contrib-rust/compare/0.8.0...0.8.1
 [0.8.0]: https://github.com/EmbarkStudios/sentry-contrib-rust/compare/0.7.0...0.8.0
 [0.7.0]: https://github.com/EmbarkStudios/sentry-contrib-rust/compare/0.6.0...0.7.0
