@@ -8,6 +8,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 <!-- next-header -->
 ## [Unreleased] - ReleaseDate
+### Changed
+- [PR#27](https://github.com/EmbarkStudios/sentry-contrib-rust/pull/27) changed the version requirements for `sentry-types` to fix the breaking change it introduced.
+
 ## [0.8.2] - 2023-11-15
 ### Fixed
 - Commit [7f48012] pinned `sentry-types` to =0.31.6 to avoid a breaking change in >=0.31.7.
